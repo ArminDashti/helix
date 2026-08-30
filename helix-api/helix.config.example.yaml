@@ -1,0 +1,128 @@
+# Copy to helix.config.yaml and fill in secrets.
+# Do not commit helix.config.yaml.
+#
+# Paste the OpenRouter, OpenAI-compatible, or Cursor Cloud API key in Settings.
+# Keys are stored as openrouter.token or cursor.token (never returned by the API).
+# provider: openrouter | openai_compatible | cursor
+# - openrouter / openai_compatible: OpenAI-compatible chat via openrouter.base_url
+# - cursor: Cloud key + models; chat via local cursor-api adapter (adapter_base_url)
+# openrouter.base_url defaults to https://openrouter.ai/api/v1 for OpenRouter.
+provider: openrouter
+
+# Models are suggestions only — use any model ids your host accepts.
+# Runtime resolves: openrouter.agents.<id>.model, else openrouter.default_model.
+
+openrouter:
+  token_env: OPENROUTER_TOKEN
+  base_url: "https://openrouter.ai/api/v1"
+  app_name: "Helix"
+  default_model: "composer-2.5"
+  # Per chat/completions call; pipeline agents can exceed 90s with large prompts.
+  timeout_seconds: 600
+  agents:
+    guardian:
+      model: "composer-2.5"
+    data-gatherer:
+      model: "composer-2.5"
+    researcher:
+      model: "composer-2.5"
+    validator:
+      model: "composer-2.5"
+    result-builder:
+      model: "composer-2.5"
+    publisher:
+      model: "composer-2.5"
+    web-searcher:
+      model: "composer-2.5"
+
+
+# Cursor Cloud API key + local OpenAI-compatible adapter (cursor-api) for chat.
+# Requires Cursor desktop installed on the API host. Models come from api.cursor.com.
+cursor:
+  token_env: CURSOR_API_KEY
+  adapter_base_url: "http://127.0.0.1:8130/v1"
+  app_name: "Helix"
+  default_model: "composer-2.5"
+  agents:
+    guardian:
+      model: "composer-2.5"
+    data-gatherer:
+      model: "composer-2.5"
+    researcher:
+      model: "composer-2.5"
+    validator:
+      model: "composer-2.5"
+    result-builder:
+      model: "composer-2.5"
+    publisher:
+      model: "composer-2.5"
+    web-searcher:
+      model: "composer-2.5"
+app:
+  secret_key: "change-me"
+  debug: true
+  allowed_hosts:
+    - "127.0.0.1"
+    - "localhost"
+  cors_origins:
+    - "http://127.0.0.1:5173"
+    - "http://localhost:5173"
+
+database:
+  # Default: AdventureWorks LT sample SQLite (downloaded + installed on first API start).
+  # Engine: sqlite | postgresql | sqlserver
+  engine: sqlite
+  name: helix-sample.sqlite
+  # PostgreSQL example:
+  # engine: postgresql
+  # host: "127.0.0.1"
+  # port: 5432
+  # name: helix
+  # user: helix
+  # password: ""
+  # sslmode: prefer
+  # SQL Server example (e.g. full AdventureWorks):
+  # engine: sqlserver
+  # host: "127.0.0.1"
+  # port: 1433
+  # name: AdventureWorksLT2022
+  # user: sa
+  # password: ""
+  # driver: "ODBC Driver 18 for SQL Server"
+  # trust_server_certificate: true
+  # encrypt: true
+
+
+frontend:
+  api_base_url: "http://127.0.0.1:8000"
+
+# Company that uses the app (Settings → General). Logo is an image data URL.
+branding:
+  company_name: ""
+  company_logo_data_url: ""
+
+# Sandbox reuses a pre-installed interpreter — never pip-installs per request.
+sandbox:
+  allow_pip_install: false
+  python_executable: null # null = sys.executable from the running app
+  timeout_seconds: 60
+  max_retries: 3
+  max_verify_retries: 2
+  max_rows: 10000
+
+sql:
+  max_retries: 3
+  require_row_limit: false # set true to require TOP / FETCH / LIMIT (unless pure aggregate)
+  enforce_allowlist: false # set true to reject FROM/JOIN objects not returned by list_tables
+  forbid_select_star: true
+  max_rows: 10000 # used only when require_row_limit is true
+
+# Pipeline layout is stored in helix.config.yaml as pipeline_graph (runner)
+# and pipeline_flow (Arrange stages: IF / IF NOT / Proceed). Edit in the UI.
+
+# Optional user-defined agents (not part of the Analysis runtime pipeline).
+# custom_agents:
+#   - id: pipeline_designer
+#     name: Pipeline Designer
+#     description: Designs and documents analysis pipelines
+

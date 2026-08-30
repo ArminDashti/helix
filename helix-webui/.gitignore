@@ -1,0 +1,57 @@
+﻿*.exe
+*.EXE
+*.exe
+*.EXE
+
+# Env
+.env
+.env.local
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# auto-managed large files (>5MB)
+node_modules/.vite/deps/echarts-for-react.js.map
+node_modules/@esbuild/win32-x64/esbuild.exe
+node_modules/echarts/dist/echarts.esm.js.map
+node_modules/echarts/dist/echarts.esm.mjs.map
+node_modules/echarts/dist/echarts.js.map
+node_modules/lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node
+
+# === auto-managed large files (>5MB) ===
+
+# BEGIN AUTO-MANAGED LARGE FILES (>5MB)
+node_modules/.vite/deps/echarts-for-react.js.map
+node_modules/@esbuild/win32-x64/esbuild.exe
+node_modules/echarts/dist/echarts.esm.js.map
+node_modules/echarts/dist/echarts.esm.mjs.map
+node_modules/echarts/dist/echarts.js.map
+node_modules/lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node
+# END AUTO-MANAGED LARGE FILES
+
+# === auto-managed large files (github-commit-push-all) ===
+node_modules/.vite/deps/echarts-for-react.js.map
+node_modules/@esbuild/win32-x64/esbuild.exe
+node_modules/echarts/dist/echarts.esm.js.map
+node_modules/echarts/dist/echarts.esm.mjs.map
+node_modules/echarts/dist/echarts.js.map
+node_modules/lightningcss-win32-x64-msvc/lightningcss.win32-x64-msvc.node
+
+# github-commit-push-all: auto-ignore large files (>5MB)
+
+# AUTO-IGNORE-LARGE-FILES (>5MB) â€” managed by github-commit-push-all
+# github-commit-push-all: large files (>5MB) — auto-managed
+
+# auto-managed: files > 5MB

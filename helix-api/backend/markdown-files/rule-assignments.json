@@ -1,0 +1,42 @@
+{
+  "guard-prompt": [
+    "guardian"
+  ],
+  "warehouse-sql": [
+    "data-gatherer"
+  ],
+  "conduct-research": [
+    "researcher"
+  ],
+  "synthesize-brief": [
+    "researcher"
+  ],
+  "match-goal": [
+    "validator"
+  ],
+  "build-result": [
+    "result-builder"
+  ],
+  "package-payload": [
+    "publisher"
+  ],
+  "web-search-only": [
+    "web-searcher"
+  ],
+  "core-behavior": [
+    "guardian",
+    "data-gatherer",
+    "researcher",
+    "validator",
+    "result-builder",
+    "publisher"
+  ],
+  "output-contract": [
+    "guardian",
+    "data-gatherer",
+    "researcher",
+    "validator",
+    "result-builder",
+    "publisher"
+  ]
+}

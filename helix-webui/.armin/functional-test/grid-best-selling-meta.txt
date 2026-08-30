@@ -1,0 +1,5 @@
+﻿http_code=200
+time_total=438.100780
+size_download=1084
+elapsed_ms=438142
+response_bytes=1084

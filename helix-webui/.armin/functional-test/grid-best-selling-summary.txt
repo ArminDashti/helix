@@ -1,0 +1,15 @@
+mode=grid
+used_demo=False
+text_report=None
+echarts=None
+columns=['مرکز', 'کالا', 'تعداد', 'فروش', 'سود خالص']
+columns_match=True
+row_count=3
+centers=['اهواز', 'شیراز', 'کرمان']
+has_ahvaz=True
+has_shiraz=True
+has_kerman=True
+has_tehran1=False
+row center=اهواز kala=18866 qty=1715.0 sale=83991304154.0 profit=83991304154.0 profit_eq_sale=True kala_is_id=True
+row center=شیراز kala=18866 qty=3030.0 sale=125365217102.0 profit=125365217102.0 profit_eq_sale=True kala_is_id=True
+row center=کرمان kala=18866 qty=1358.0 sale=47365217282.0 profit=47365217282.0 profit_eq_sale=True kala_is_id=True

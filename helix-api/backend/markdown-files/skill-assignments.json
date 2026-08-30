@@ -1,0 +1,35 @@
+{
+  "guardian/guard-prompt": [
+    "guardian"
+  ],
+  "shared/understand-database": [
+    "guardian",
+    "data-gatherer",
+    "researcher",
+    "validator"
+  ],
+  "data-gatherer/gather-data": [
+    "data-gatherer"
+  ],
+  "researcher/conduct-research": [
+    "researcher"
+  ],
+  "researcher/aggregate-research-brief": [
+    "researcher"
+  ],
+  "validator/match-prompt-goal": [
+    "validator"
+  ],
+  "shared/generate-analytical-report": [
+    "result-builder"
+  ],
+  "result-builder/build-result": [
+    "result-builder"
+  ],
+  "publisher/publish-result": [
+    "publisher"
+  ],
+  "web-searcher/search-web": [
+    "web-searcher"
+  ]
+}

@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>راهنمای مدیر Helix</title>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Vazirmatn:wght@400;500;600;700&display=swap"
+    />
+    <link rel="stylesheet" href="admin-guide.css" />
+  </head>
+  <body>
+    <!-- Cover -->
+    <section class="cover">
+      <img
+        class="cover-logo"
+        src="../../../public/helix-logo.png"
+        alt="Helix"
+      />
+      <span class="badge">مستندات مدیر</span>
+      <h1>راهنمای مدیر Helix</h1>
+      <p class="subtitle">
+        راهنمای پیکربندی، مدیریت کاربران، خط لولهٔ عامل‌ها و عیب‌یابی سامانهٔ
+        تحلیل هوشمند انبار داده
+      </p>
+      <p class="meta">
+        نسخه ۰.۱.۰ · Dashti Technologies LLC<br />
+        بهمن ۱۴۰۴
+      </p>
+    </section>
+
+    <main class="content">
+      <!-- TOC -->
+      <nav class="toc" aria-label="فهرست مطالب">
+        <h2>فهرست مطالب</h2>
+        <ol>
+          <li><span class="num">۱</span><a href="#intro">معرفی Helix</a></li>
+          <li><span class="num">۲</span><a href="#setup">راه‌اندازی اولیه</a></li>
+          <li><span class="num">۳</span><a href="#general">تنظیمات عمومی</a></li>
+          <li><span class="num">۴</span><a href="#llm">مدل زبانی</a></li>
+          <li><span class="num">۵</span><a href="#database">پایگاه داده</a></li>
+          <li><span class="num">۶</span><a href="#users">مدیریت کاربران</a></li>
+          <li><span class="num">۷</span><a href="#rules-skills">قوانین و مهارت‌ها</a></li>
+          <li><span class="num">۸</span><a href="#agents">عامل‌ها و خط لوله</a></li>
+          <li><span class="num">۹</span><a href="#table-docs">مستندات جداول</a></li>
+          <li><span class="num">۱۰</span><a href="#db-explorer">کاوشگر پایگاه داده</a></li>
+          <li><span class="num">۱۱</span><a href="#canvas">کانواس PDF</a></li>
+          <li><span class="num">۱۲</span><a href="#logs">گزارش‌ها و عیب‌یابی</a></li>
+          <li><span class="num">۱۳</span><a href="#limits">محدودیت‌ها و امنیت</a></li>
+        </ol>
+      </nav>
+
+      <!-- 1. Intro -->
+      <section id="intro" class="section">
+        <h2>۱. معرفی Helix</h2>
+        <p>
+          <strong>Helix</strong> یک سامانهٔ تحلیل هوشمند روی انبار داده است. کاربر
+          با زبان طبیعی سؤال می‌پرسد؛ خط لولهٔ چندعاملی (LLM pipeline) فقط
+          پرس‌وجوی <strong>SELECT</strong> تولید و اجرا می‌کند و خروجی ساخت‌یافته
+          برمی‌گرداند: گزارش متنی، جدول داده و/یا نمودار ECharts.
+        </p>
+        <p>محصول از دو بخش تشکیل شده است:</p>
+        <ul>
+          <li>
+            <strong>helix-api</strong> — بک‌اند Django با REST و SSE؛ اجرای خط
+            لوله، اتصال به انبار، ذخیرهٔ تنظیمات در
+            <code>helix.config.yaml</code>
+          </li>
+          <li>
+            <strong>helix-webui</strong> — رابط React برای مدیر و تحلیل‌گر؛
+            تنظیمات، عامل‌ها، نتایج و خروجی PDF
+          </li>
+        </ul>
+        <div class="callout callout-tip">
+          <div class="callout-title">نکته</div>
+          Helix یک اپ CRUD کسب‌وکار نیست؛ روی خواندن انبار (SELECT-only) و
+          تحلیل متمرکز است. نوشتن، DDL و EXEC پشتیبانی نمی‌شود.
+        </div>
+        <h3>خط لولهٔ پیش‌فرض</h3>
+        <div class="agent-flow">
+          guardian → data-gatherer → validator → result-builder → validator →
+          publisher
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>عامل</th>
+              <th>نقش</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>نگهبان (guardian)</td>
+              <td>بررسی امنیت درخواست و مجوز دسترسی کاربر</td>
+            </tr>
+            <tr>
+              <td>جمع‌آور داده (data-gatherer)</td>
+              <td>نوشتن و اجرای SELECT؛ دریافت ردیف‌ها (سقف ۵۰۰)</td>
+            </tr>
+            <tr>
+              <td>اعتبارسنج (validator)</td>
+              <td>آیا داده با سؤال کاربر هم‌خوان است؟ (دو بار اجرا)</td>
+            </tr>
+            <tr>
+              <td>سازندهٔ نتیجه (result-builder)</td>
+              <td>گزارش تحلیلی از ردیف‌های واقعی</td>
+            </tr>
+            <tr>
+              <td>ناشر (publisher)</td>
+              <td>بسته‌بندی خروجی UI (گزارش / جدول / نمودار)</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 2. Setup -->
+      <section id="setup" class="section">
+        <h2>۲. راه‌اندازی اولیه</h2>
+        <h3>اجرای محلی</h3>
+        <ol class="steps">
+          <li>
+            ابتدا API را راه بیندازید (Python 3.12، پورت ۸۰۰۰). جزئیات در README
+            پروژهٔ helix-api.
+          </li>
+          <li>
+            سپس Web UI:
+            <pre>npm install
+npm run dev</pre>
+            آدرس پیش‌فرض: <code>http://127.0.0.1:5173</code> — در توسعه،
+            <code>/api</code> به Django پروکسی می‌شود.
+          </li>
+          <li>
+            در صفحهٔ <span class="route">/settings</span> کلید API مدل زبانی را
+            وارد کنید.
+          </li>
+        </ol>
+        <h3>Docker</h3>
+        <p>
+          هر دو پروژه Dockerfile و docker-compose دارند. API روی پورت ۸۰۰۰ و Web
+          UI پشت nginx سرو می‌شود. فایل <code>helix.config.yaml</code> باید قبل
+          از اجرا وجود داشته باشد.
+        </p>
+        <h3>نشانگرهای سلامت</h3>
+        <p>
+          در نوار کناری سه وضعیت نمایش داده می‌شود: <strong>مدل زبانی</strong>،
+          <strong>موتور</strong> و <strong>پایگاه داده</strong>. روی آن‌ها کلیک
+          کنید تا به زبانهٔ گزارش وضعیت در تنظیمات بروید.
+        </p>
+        <div class="callout callout-warn">
+          <div class="callout-title">هشدار</div>
+          اگر «دسترسی به API ممکن نیست» می‌بینید، سرور helix-api در حال اجرا
+          نیست یا پروکسی/نشانی پایه اشتباه است.
+        </div>
+      </section>
+
+      <!-- 3. General -->
+      <section id="general" class="section">
+        <h2>۳. تنظیمات عمومی</h2>
+        <p>
+          مسیر: <span class="route">/settings</span> → زبانهٔ
+          <strong>عمومی</strong>
+        </p>
+        <p>
+          نام و نشان شرکتی که از Helix استفاده می‌کند را اینجا تنظیم کنید. این
+          اطلاعات در سربرگ برنامه و خروجی PDF نتایج تحلیل دیده می‌شوند.
+        </p>
+        <ul>
+          <li><strong>نام شرکت</strong> — متن نمایشی در هدر</li>
+          <li>
+            <strong>نشان شرکت</strong> — PNG یا JPEG، حداکثر ۲۵۰ کیلوبایت
+          </li>
+        </ul>
+        <p>پس از تغییر، دکمهٔ ذخیره را بزنید. تنظیمات در API ذخیره می‌شود.</p>
+      </section>
+
+      <!-- 4. LLM -->
+      <section id="llm" class="section">
+        <h2>۴. مدل زبانی</h2>
+        <p>
+          مسیر: <span class="route">/settings</span> → زبانهٔ
+          <strong>مدل زبانی</strong>
+        </p>
+        <p>
+          اجراهای تحلیل یک API گفت‌وگوی سازگار با OpenAI را صدا می‌زنند. سه
+          ارائه‌دهنده پشتیبانی می‌شود:
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>ارائه‌دهنده</th>
+              <th>کاربرد</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>OpenRouter</td>
+              <td>پیش‌فرض رایج؛ مدل‌های متنوع از یک کلید</td>
+            </tr>
+            <tr>
+              <td>سازگار با OpenAI</td>
+              <td>میزبان دلخواه با نشانی پایهٔ سفارشی</td>
+            </tr>
+            <tr>
+              <td>Cursor</td>
+              <td>کلید Cloud Cursor + آداپتر محلی روی میزبان API</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>فیلدهای مهم</h3>
+        <ul>
+          <li><strong>نشانی پایه</strong> — مثلاً OpenRouter یا OpenAI</li>
+          <li>
+            <strong>کلید API</strong> — روی میزبان API ذخیره می‌شود، نه در
+            مرورگر
+          </li>
+          <li><strong>مدل پیش‌فرض</strong> — برای عامل‌های بدون مدل اختصاصی</li>
+          <li>
+            <strong>مدل هر عامل</strong> — override برای guardian، data-gatherer
+            و غیره
+          </li>
+        </ul>
+        <div class="callout callout-tip">
+          <div class="callout-title">نکته</div>
+          برای Cursor، برنامه باید روی ماشین API نصب باشد و آداپتر محلی (پورت
+          ۸۱۳۰) در دسترس باشد.
+        </div>
+        <p>تنظیمات در <code>helix.config.yaml</code> ذخیره می‌شود.</p>
+      </section>
+
+      <!-- 5. Database -->
+      <section id="database" class="section">
+        <h2>۵. پایگاه داده</h2>
+        <p>
+          مسیر: <span class="route">/settings</span> → زبانهٔ
+          <strong>پایگاه داده</strong>
+        </p>
+        <h3>نمونهٔ SQLite (AdventureWorks)</h3>
+        <p>
+          به‌طور پیش‌فرض، API از پایگاه نمونه AdventureWorks LT استفاده می‌کند.
+          سه سطح (کوچک / متوسط / بزرگ) قابل دانلود و فعال‌سازی است — برای آزمایش
+          بدون اتصال به انبار واقعی.
+        </p>
+        <h3>انبار واقعی</h3>
+        <p>موتورهای پشتیبانی‌شده:</p>
+        <ul>
+          <li><strong>PostgreSQL</strong> — میزبان، درگاه، SSL</li>
+          <li>
+            <strong>SQL Server</strong> — ODBC Driver 18، رمزنگاری، اعتماد به
+            گواهی
+          </li>
+        </ul>
+        <div class="callout callout-warn">
+          <div class="callout-title">ODBC و SQL Server</div>
+          از Python 3.12 استفاده کنید (pyodbc روی 3.15 بدون wheel سخت است). خطای
+          <code>08S01</code> یعنی قطع ارتباط TDS — اتصال شبکه، فایروال و پایداری
+          سرور SQL را بررسی کنید.
+        </div>
+        <p>
+          رشتهٔ اتصال را ویرایش و ذخیره کنید تا فیلدهای میزبان، کاربر و گذرواژه
+          به‌روز شوند.
+        </p>
+      </section>
+
+      <!-- 6. Users -->
+      <section id="users" class="section">
+        <h2>۶. مدیریت کاربران</h2>
+        <p>مسیر: <span class="route">/admin</span></p>
+        <p>
+          کاربران Helix «هویت شرکت» با سیاست دسترسی به داده هستند — نه ورود با
+          رمز عبور کلاسیک. هر کاربر فیلدهای زیر را دارد:
+        </p>
+        <ul>
+          <li><strong>نام کاربری</strong> و <strong>نام نمایشی</strong></li>
+          <li><strong>مدیر</strong> — دسترسی کامل SELECT</li>
+          <li>
+            <strong>دسترسی به داده</strong> — توضیح زبان ساده (مثلاً «فقط جداول
+            فروش»)
+          </li>
+        </ul>
+        <p>
+          هنگام ایجاد/ویرایش کاربر غیرمدیر، عامل <strong>نگهبان</strong> سیاست
+          دسترسی را بررسی و به جداول مجاز نگاشت می‌کند.
+        </p>
+        <div class="callout callout-tip">
+          <div class="callout-title">مدیر پیش‌فرض</div>
+          کاربر <code>armin</code> همیشه seed می‌شود و قابل حذف یا تنزل نیست.
+        </div>
+        <p>
+          اگر Web UI نام کاربر را در درخواست اجرا ارسال نکند، اجرا به‌عنوان
+          <strong>مهمان (guest)</strong> ثبت می‌شود.
+        </p>
+      </section>
+
+      <!-- 7. Rules & Skills -->
+      <section id="rules-skills" class="section">
+        <h2>۷. قوانین و مهارت‌ها</h2>
+        <p>
+          مسیرها: <span class="route">/rules</span> و
+          <span class="route">/skills</span>
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>مفهوم</th>
+              <th>کاربرد</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>قوانین (Rules)</td>
+              <td>سیاست‌ها و محدودیت‌های ثابت (مثلاً قرارداد خروجی، امنیت SQL)</td>
+            </tr>
+            <tr>
+              <td>مهارت‌ها (Skills)</td>
+              <td>دستورالعمل‌های عملیاتی و playbook برای وظایف خاص</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>عملیات</h3>
+        <ul>
+          <li>ایجاد، ویرایش، حذف — محتوا به‌صورت Markdown</li>
+          <li>فعال / غیرفعال کردن</li>
+          <li>تخصیص به عامل‌ها از صفحهٔ تخصیص هر عامل</li>
+        </ul>
+        <div class="callout callout-tip">
+          <div class="callout-title">نکته</div>
+          عامل‌ها فقط از قوانین و مهارت‌های تخصیص‌یافته استفاده می‌کنند — فایل
+          instruction جداگانه ندارند.
+        </div>
+      </section>
+
+      <!-- 8. Agents -->
+      <section id="agents" class="section">
+        <h2>۸. عامل‌ها و خط لوله</h2>
+        <p>مسیر: <span class="route">/agents</span></p>
+        <h3>سه نما</h3>
+        <ul>
+          <li><strong>فهرست</strong> — لیست عامل‌ها با قوانین/مهارت‌ها</li>
+          <li>
+            <strong>چینش (Arrange)</strong> — مرحله‌به‌مرحله IF/ELSE/برو به؛
+            هر مرحله یک «اگر»
+          </li>
+          <li><strong>گراف (Graph)</strong> — نمای بصری همان جریان چینش</li>
+        </ul>
+        <h3>شرط‌های رایج</h3>
+        <ul>
+          <li>موفق / ناموفق / تلاش دوباره</li>
+          <li>نتیجه برابر است (مثلاً <code>done</code>)</li>
+          <li>آنگاه: برو به عامل بعدی یا توقف</li>
+        </ul>
+        <p>
+          می‌توانید عامل سفارشی بسازید (شناسه، نقش، توضیح) و قوانین/مهارت‌ها را
+          از <span class="route">/agents/:id/assignments</span> تخصیص دهید.
+        </p>
+        <div class="callout callout-warn">
+          <div class="callout-title">هشدار</div>
+          خط لولهٔ پیچیده بدون IF منظم در چینش، در نمای گراف به‌درستی نمایش داده
+          نمی‌شود. از «بازنشانی پیش‌فرض» برای بازگشت به جریان خطی استفاده کنید.
+        </div>
+      </section>
+
+      <!-- 9. Table docs -->
+      <section id="table-docs" class="section">
+        <h2>۹. مستندات جداول</h2>
+        <p>مسیر: <span class="route">/docs</span></p>
+        <p>
+          ویرایشگر مستندات انبار: برای هر جدول «نمای کلی» و برای هر ستون
+          «توضیح» و «توضیح SQL» قابل ویرایش است.
+        </p>
+        <p>
+          این توضیحات به کاتالوگ زندهٔ API می‌پیوندد و به عامل
+          data-gatherer کمک می‌کند SELECT دقیق‌تری بنویسد — به‌ویژه برای جداول
+          با نام‌های فارسی/اختصاصی.
+        </p>
+        <div class="callout callout-tip">
+          <div class="callout-title">توصیه</div>
+          برای ستون‌های مبهم، توضیح SQL (معنی فنی برای مدل) را پر کنید؛ کیفیت
+          تحلیل به‌طور محسوس بهتر می‌شود.
+        </div>
+      </section>
+
+      <!-- 10. DB Explorer -->
+      <section id="db-explorer" class="section">
+        <h2>۱۰. کاوشگر پایگاه داده</h2>
+        <p>مسیر: <span class="route">/db-explorer</span></p>
+        <p>
+          ابزار تشخیصی مدیر: انتخاب جدول، WHERE، ORDER BY، محدودیت تعداد ردیف و
+          اجرای پیش‌نمایش <strong>فقط SELECT</strong>.
+        </p>
+        <p>
+          برای بررسی اینکه آیا داده در انبار وجود دارد، قبل از اجرای تحلیل LLM
+          مفید است.
+        </p>
+      </section>
+
+      <!-- 11. Canvas -->
+      <section id="canvas" class="section">
+        <h2>۱۱. کانواس PDF</h2>
+        <p>مسیر: <span class="route">/canvas</span></p>
+        <p>
+          طراحی چیدمان خروجی PDF نتایج تحلیل. تنظیمات در localStorage مرورگر
+          ذخیره می‌شود (هر دستگاه جدا).
+        </p>
+        <h3>گزینه‌های چیدمان</h3>
+        <ul>
+          <li>نوار سربرگ، لوگوی Helix، لوگوی شرکت</li>
+          <li>عنوان (پرسش)، نمودارها، گزارش متنی، جدول داده</li>
+          <li>پاورقی صفحه</li>
+          <li>جهت افقی / عمودی</li>
+          <li>ضخامت و گردی حاشیه، قلم (پیش‌فرض: وزیرمتن)</li>
+        </ul>
+        <p>
+          از صفحهٔ جزئیات نتیجه (<span class="route">/results/:id</span>) دکمهٔ
+          «خروجی PDF» فایل را با همین چیدمان تولید می‌کند.
+        </p>
+      </section>
+
+      <!-- 12. Logs -->
+      <section id="logs" class="section">
+        <h2>۱۲. گزارش‌ها و عیب‌یابی</h2>
+        <p>مسیر: <span class="route">/logs</span></p>
+        <h3>انواع گزارش</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>نوع</th>
+              <th>معنی</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>pipeline</td>
+              <td>شکست در خط لولهٔ عامل‌ها</td>
+            </tr>
+            <tr>
+              <td>llm</td>
+              <td>خطای مدل زبانی یا API</td>
+            </tr>
+            <tr>
+              <td>sql</td>
+              <td>خطای پرس‌وجوی SQL</td>
+            </tr>
+            <tr>
+              <td>database</td>
+              <td>اتصال یا موتور پایگاه داده</td>
+            </tr>
+            <tr>
+              <td>api</td>
+              <td>خطای سطح API</td>
+            </tr>
+          </tbody>
+        </table>
+        <h3>مشکلات رایج</h3>
+        <ul>
+          <li>
+            <strong>دسترسی به API ممکن نیست</strong> — API خاموش یا پروکسی
+            اشتباه
+          </li>
+          <li>
+            <strong>کلید API تنظیم نشده</strong> — زبانهٔ مدل زبانی در تنظیمات
+          </li>
+          <li>
+            <strong>pyodbc / 08S01</strong> — Python 3.12، پایداری شبکه SQL
+            Server
+          </li>
+          <li>
+            <strong>API نادرست پیکربندی شده</strong> — HTML به‌جای JSON؛
+            نشانی پایه را بررسی کنید
+          </li>
+        </ul>
+        <p>
+          زبانهٔ <strong>گزارش وضعیت</strong> در تنظیمات رویدادهای لحظه‌ای
+          اتصال را نشان می‌دهد؛ گزارش‌های ذخیره‌شده در صفحهٔ گزارش‌ها می‌مانند.
+        </p>
+      </section>
+
+      <!-- 13. Limits -->
+      <section id="limits" class="section">
+        <h2>۱۳. محدودیت‌ها و امنیت</h2>
+        <ul>
+          <li>
+            <strong>فقط SELECT</strong> — INSERT، UPDATE، DELETE، DDL و EXEC
+            ممنوع
+          </li>
+          <li>
+            <strong>بدون دادهٔ ساختگی</strong> — خروجی باید از ردیف‌های واقعی
+            انبار باشد
+          </li>
+          <li>
+            <strong>سقف ردیف</strong> — خط لوله حداکثر ۵۰۰ ردیف در هر fetch
+            (قابل تنظیم در config)
+          </li>
+          <li>
+            <strong>کاتالوگ</strong> — عامل‌ها نباید جدول/ستونی خارج از
+            allowlist اختراع کنند
+          </li>
+          <li>
+            <strong>نگهبان</strong> — درخواست‌های jailbreak، credential fishing
+            و دسترسی غیرمجاز را رد می‌کند
+          </li>
+          <li>
+            <strong>مهمان</strong> — بدون username در درخواست، actor مهمان است
+          </li>
+        </ul>
+        <div class="callout callout-tip">
+          <div class="callout-title">پشتیبانی</div>
+          Dashti Technologies LLC · آرمین دشتی<br />
+          helix-webui و helix-api در GitHub
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
