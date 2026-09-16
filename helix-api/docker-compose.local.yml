@@ -1,9 +1,11 @@
 # Local Docker hot-reload: Postgres + Django runserver + Vite WebUI (bind mounts).
-# Usage: docker compose -f docker-compose.local.yml -p helix up -d --force-recreate
+# Usage: ..\scripts\install-local-docker.ps1
+#   or: docker compose -f docker-compose.local.yml -p helix up -d --build
 name: helix
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: helix-postgres
     restart: "no"
     environment:
       POSTGRES_DB: helix
@@ -24,6 +26,7 @@ services:
       context: .
       dockerfile: dockerfile
     image: helix-api:local-dev
+    container_name: cursor-helix-api-api
     restart: "no"
     working_dir: /app
     environment:
@@ -52,6 +55,7 @@ services:
 
   webui:
     image: node:22-alpine
+    container_name: helix-webui
     restart: "no"
     working_dir: /app
     environment:
@@ -74,5 +78,8 @@ services:
 
 volumes:
   helix-postgres-data:
+    name: helix-postgres-data
   helix-pip-cache:
+    name: helix-pip-cache
   helix-webui-node-modules:
+    name: helix-webui-node-modules
