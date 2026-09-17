@@ -229,9 +229,7 @@ function ResultsList() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
-      <PageHeader icon={Play} title={t("results.title")}>
-        <p className="mt-0.5 text-sm text-muted">{t("results.subtitle")}</p>
-      </PageHeader>
+      <PageHeader icon={Play} title={t("results.title")} />
       {error ? (
         <p className="rounded-xl border border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn">
           {error}

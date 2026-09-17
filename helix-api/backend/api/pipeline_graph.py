@@ -18,7 +18,7 @@ FLOW_TYPES = frozenset({"sequence", "agent", "if", "loop", "stages", "stage"})
 STAGE_ACTIONS = frozenset({"if", "if_not", "proceed"})
 RESULT_OPS = frozenset({"equal", "not_equal"})
 THEN_ACTIONS = frozenset({"proceed", "stop"})
-RETRY_AGENT_IDS = frozenset({"data-gatherer", "result-builder", "publisher"})
+RETRY_AGENT_IDS = frozenset({"orchester"})
 
 
 def _graph_node_allowed(node_id: str) -> bool:
@@ -55,54 +55,19 @@ def _spine_instance_ids(children: list[dict[str, Any]]) -> list[str]:
 
 
 def default_pipeline_graph() -> dict[str, Any]:
-    """guardian → data-gatherer → validator → result-builder → validator → publisher."""
+    """Single orchester stage (full pipeline TBD in pipeline_run)."""
     flow = default_pipeline_flow()
     return compile_pipeline_flow(flow)
 
 
 def default_pipeline_flow() -> dict[str, Any]:
-    """Six-step seed: two validator visits with fail-back edges compiled in graph."""
+    """Seed: one orchester stage then stop."""
     return {
         "type": "stages",
         "children": [
             {
                 "type": "stage",
-                "agent_id": "guardian",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "data-gatherer",
-            },
-            {
-                "type": "stage",
-                "agent_id": "data-gatherer",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "validator",
-            },
-            {
-                "type": "stage",
-                "agent_id": "validator",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "result-builder",
-            },
-            {
-                "type": "stage",
-                "agent_id": "result-builder",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "validator",
-            },
-            {
-                "type": "stage",
-                "agent_id": "validator",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "publisher",
-            },
-            {
-                "type": "stage",
-                "agent_id": "publisher",
+                "agent_id": "orchester",
                 "action": "proceed",
                 "then": "stop",
             },
@@ -111,46 +76,8 @@ def default_pipeline_flow() -> dict[str, Any]:
 
 
 def research_pipeline_flow() -> dict[str, Any]:
-    """Research mode: researcher replaces gather + first validator."""
-    return {
-        "type": "stages",
-        "children": [
-            {
-                "type": "stage",
-                "agent_id": "guardian",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "researcher",
-            },
-            {
-                "type": "stage",
-                "agent_id": "researcher",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "result-builder",
-            },
-            {
-                "type": "stage",
-                "agent_id": "result-builder",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "validator",
-            },
-            {
-                "type": "stage",
-                "agent_id": "validator",
-                "action": "proceed",
-                "then": "proceed",
-                "next_agent_id": "publisher",
-            },
-            {
-                "type": "stage",
-                "agent_id": "publisher",
-                "action": "proceed",
-                "then": "stop",
-            },
-        ],
-    }
+    """Research mode uses the same single-orchester seed until _run_orchester ships."""
+    return default_pipeline_flow()
 
 
 def _normalize_when(raw: Any) -> dict[str, Any]:

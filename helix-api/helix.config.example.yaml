@@ -1,11 +1,10 @@
 # Copy to helix.config.yaml and fill in secrets.
 # Do not commit helix.config.yaml.
 #
-# Paste the OpenRouter, OpenAI-compatible, or Cursor Cloud API key in Settings.
-# Keys are stored as openrouter.token or cursor.token (never returned by the API).
-# provider: openrouter | openai_compatible | cursor
+# Paste the OpenRouter or OpenAI-compatible API key in Settings.
+# Keys are stored as openrouter.token (never returned by the API).
+# provider: openrouter | openai_compatible
 # - openrouter / openai_compatible: OpenAI-compatible chat via openrouter.base_url
-# - cursor: Cloud key + models; chat via local cursor-api adapter (adapter_base_url)
 # openrouter.base_url defaults to https://openrouter.ai/api/v1 for OpenRouter.
 provider: openrouter
 
@@ -20,44 +19,11 @@ openrouter:
   # Per chat/completions call; pipeline agents can exceed 90s with large prompts.
   timeout_seconds: 600
   agents:
-    guardian:
-      model: "composer-2.5"
-    data-gatherer:
-      model: "composer-2.5"
-    researcher:
-      model: "composer-2.5"
-    validator:
-      model: "composer-2.5"
-    result-builder:
-      model: "composer-2.5"
-    publisher:
+    orchester:
       model: "composer-2.5"
     web-searcher:
       model: "composer-2.5"
 
-
-# Cursor Cloud API key + local OpenAI-compatible adapter (cursor-api) for chat.
-# Requires Cursor desktop installed on the API host. Models come from api.cursor.com.
-cursor:
-  token_env: CURSOR_API_KEY
-  adapter_base_url: "http://127.0.0.1:8130/v1"
-  app_name: "Helix"
-  default_model: "composer-2.5"
-  agents:
-    guardian:
-      model: "composer-2.5"
-    data-gatherer:
-      model: "composer-2.5"
-    researcher:
-      model: "composer-2.5"
-    validator:
-      model: "composer-2.5"
-    result-builder:
-      model: "composer-2.5"
-    publisher:
-      model: "composer-2.5"
-    web-searcher:
-      model: "composer-2.5"
 app:
   secret_key: "change-me"
   debug: true
@@ -125,4 +91,3 @@ sql:
 #   - id: pipeline_designer
 #     name: Pipeline Designer
 #     description: Designs and documents analysis pipelines
-

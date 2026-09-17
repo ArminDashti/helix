@@ -13,9 +13,6 @@ import {
 import {
   fetchAgents,
   fetchBranding,
-  fetchCursorInstallStatus,
-  fetchCursorModels,
-  fetchCursorSettings,
   fetchDatabaseSettings,
   fetchOpenRouterModels,
   fetchOpenRouterSettings,
@@ -23,7 +20,6 @@ import {
   fetchSampleTiers,
   ensureSampleTier,
   saveBranding,
-  saveCursorSettings,
   saveDatabaseSettings,
   saveOpenRouterSettings,
   saveProvider,
@@ -58,25 +54,16 @@ const EMPTY_DB = {
 const SSL_MODES = ["disable", "prefer", "require", "verify-ca", "verify-full"];
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
-const CURSOR_ADAPTER_BASE_URL = "http://127.0.0.1:8130/v1";
 
 const EMPTY_OPENROUTER = {
   token: "",
   base_url: OPENROUTER_BASE_URL,
-  app_name: "Helix",
   default_model: "composer-2.5",
   agents: {},
   token_configured: false,
 };
 
-const EMPTY_CURSOR = {
-  token: "",
-  adapter_base_url: CURSOR_ADAPTER_BASE_URL,
-  app_name: "Helix",
-  default_model: "composer-2.5",
-  agents: {},
-  token_configured: false,
-};
+const LLM_AGENT_IDS = ["orchester", "web-searcher"];
 
 const ADMIN_GUIDE_PDF = assetUrl("docs/fa/helix-admin-guide.pdf");
 
@@ -111,7 +98,6 @@ const EMPTY_BRANDING = {
 const TAB_ALIASES = {
   provider: "llm",
   openrouter: "llm",
-  cursor: "llm",
   sql: "database",
   connection: "llm",
   logs: "status",
@@ -323,7 +309,6 @@ export default function SettingsPage() {
     () => [
       { value: "openrouter", label: t("settings.apiOpenrouter") },
       { value: "openai_compatible", label: t("settings.apiOpenaiCompatible") },
-      { value: "cursor", label: t("settings.apiCursor") },
     ],
     [t],
   );
@@ -335,8 +320,6 @@ export default function SettingsPage() {
   const [logoError, setLogoError] = useState(null);
   const [provider, setProvider] = useState("openrouter");
   const [orForm, setOrForm] = useState(EMPTY_OPENROUTER);
-  const [cursorForm, setCursorForm] = useState(EMPTY_CURSOR);
-  const [cursorInstall, setCursorInstall] = useState(null);
   const [models, setModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState(null);
@@ -349,9 +332,7 @@ export default function SettingsPage() {
   const [tierBusy, setTierBusy] = useState(null);
   const { checkConnection } = useApiStatus();
 
-  const isCursor = provider === "cursor";
-  const activeLlmForm = isCursor ? cursorForm : orForm;
-  const activeTokenConfigured = Boolean(activeLlmForm.token_configured);
+  const activeTokenConfigured = Boolean(orForm.token_configured);
 
   async function reloadSampleTiers() {
     try {
@@ -474,34 +455,10 @@ export default function SettingsPage() {
         }
 
         try {
-          const cursorData = await fetchCursorSettings();
-          setCursorForm({
-            ...EMPTY_CURSOR,
-            ...cursorData.cursor,
-            token: "",
-          });
-          anyOk = true;
-        } catch (err) {
-          failures.push({
-            key: "settings.sectionCursorFail",
-            message: err instanceof Error ? err.message : "",
-          });
-        }
-
-        try {
-          const install = await fetchCursorInstallStatus({ silent: true });
-          setCursorInstall(install);
-        } catch {
-          setCursorInstall(null);
-        }
-
-        try {
           const providerData = await fetchProviderSettings();
           const raw = providerData.provider;
           const nextProvider =
-            raw === "openai_compatible" || raw === "cursor"
-              ? raw
-              : "openrouter";
+            raw === "openai_compatible" ? raw : "openrouter";
           setProvider(nextProvider);
           anyOk = true;
         } catch (err) {
@@ -536,9 +493,7 @@ export default function SettingsPage() {
       setModelsLoading(true);
       setModelsError(null);
       try {
-        const data = isCursor
-          ? await fetchCursorModels({ silent: true })
-          : await fetchOpenRouterModels({ silent: true });
+        const data = await fetchOpenRouterModels({ silent: true });
         if (!cancelled) setModels(data.models || []);
       } catch (err) {
         if (!cancelled) {
@@ -554,23 +509,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [loading, activeTokenConfigured, isCursor, t]);
-
-  useEffect(() => {
-    if (!isCursor) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const install = await fetchCursorInstallStatus({ silent: true });
-        if (!cancelled) setCursorInstall(install);
-      } catch {
-        if (!cancelled) setCursorInstall(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isCursor]);
+  }, [loading, activeTokenConfigured, t]);
 
   function defaultPortForEngine(engine) {
     if (engine === "sqlserver") return 1433;
@@ -606,21 +545,7 @@ export default function SettingsPage() {
     setOrForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function updateCursorField(key, value) {
-    setCursorForm((prev) => ({ ...prev, [key]: value }));
-  }
-
   function updateAgentModel(agentId, model) {
-    if (isCursor) {
-      setCursorForm((prev) => ({
-        ...prev,
-        agents: {
-          ...prev.agents,
-          [agentId]: { ...(prev.agents?.[agentId] || {}), model },
-        },
-      }));
-      return;
-    }
     setOrForm((prev) => ({
       ...prev,
       agents: {
@@ -637,15 +562,6 @@ export default function SettingsPage() {
         const current = (prev.base_url || "").trim();
         if (!current || current === OPENROUTER_BASE_URL) {
           return { ...prev, base_url: OPENROUTER_BASE_URL };
-        }
-        return prev;
-      });
-    }
-    if (next === "cursor") {
-      setCursorForm((prev) => {
-        const current = (prev.adapter_base_url || "").trim();
-        if (!current || current === CURSOR_ADAPTER_BASE_URL) {
-          return { ...prev, adapter_base_url: CURSOR_ADAPTER_BASE_URL };
         }
         return prev;
       });
@@ -740,34 +656,8 @@ export default function SettingsPage() {
     setError(null);
     setStatus(null);
     try {
-      if (provider === "cursor" && cursorInstall && !cursorInstall.installed) {
-        setError(t("settings.cursorNotInstalled"));
-        return;
-      }
-      if (provider === "cursor") {
-        const payload = {
-          adapter_base_url: (cursorForm.adapter_base_url || "").trim(),
-          app_name: cursorForm.app_name,
-          default_model: cursorForm.default_model,
-          agents: cursorForm.agents,
-        };
-        if (cursorForm.token?.trim()) {
-          payload.token = cursorForm.token.trim();
-        }
-        const data = await saveCursorSettings(payload);
-        const providerData = await saveProvider("cursor");
-        setProvider(providerData.provider || "cursor");
-        setCursorForm({ ...EMPTY_CURSOR, ...data.cursor, token: "" });
-        setStatus(t("settings.llmSaved"));
-        checkConnection({ silent: true });
-        if (data.cursor?.token_configured) {
-          await refreshModels({ tokenConfigured: true });
-        }
-        return;
-      }
       const payload = {
         base_url: (orForm.base_url || "").trim(),
-        app_name: orForm.app_name,
         default_model: orForm.default_model,
         agents: orForm.agents,
       };
@@ -791,7 +681,7 @@ export default function SettingsPage() {
   async function refreshModels({
     tokenConfigured = activeTokenConfigured,
   } = {}) {
-    if (!tokenConfigured && !(activeLlmForm.token || "").trim()) {
+    if (!tokenConfigured && !(orForm.token || "").trim()) {
       setModels([]);
       setModelsError(null);
       setModelsLoading(false);
@@ -800,9 +690,7 @@ export default function SettingsPage() {
     setModelsLoading(true);
     setModelsError(null);
     try {
-      const data = isCursor
-        ? await fetchCursorModels({ force: true, silent: true })
-        : await fetchOpenRouterModels({ force: true, silent: true });
+      const data = await fetchOpenRouterModels({ force: true, silent: true });
       setModels(data.models || []);
     } catch (err) {
       setModelsError(
@@ -821,20 +709,21 @@ export default function SettingsPage() {
     return <p className="text-sm text-muted">{t("settings.loading")}</p>;
   }
 
-  const agentSource = isCursor ? cursorForm.agents : orForm.agents;
-  const agentIds = sortStrings(
-    Object.keys(agentSource || {}).length
-      ? Object.keys(agentSource)
-      : Object.keys(agentNameById),
-    locale,
-  ).sort((a, b) => compareAz(agentLabel(a), agentLabel(b), locale));
+  const agentSource = orForm.agents;
+  const agentIdPool = Object.keys(agentSource || {}).length
+    ? Object.keys(agentSource)
+    : Object.keys(agentNameById);
+  const filteredLlmAgents = LLM_AGENT_IDS.filter(
+    (id) => id === "orchester" || agentIdPool.includes(id),
+  );
+  const agentIds = sortStrings(filteredLlmAgents, locale).sort((a, b) =>
+    compareAz(agentLabel(a), agentLabel(b), locale),
+  );
 
   const modelPlaceholder =
-    provider === "cursor"
-      ? t("settings.modelsSearchCursor")
-      : provider === "openai_compatible"
-        ? t("settings.modelsSearch")
-        : t("settings.modelsSearchOpenRouter");
+    provider === "openai_compatible"
+      ? t("settings.modelsSearch")
+      : t("settings.modelsSearchOpenRouter");
 
   function sectionErrorMessage(failure) {
     const message =
@@ -988,23 +877,7 @@ export default function SettingsPage() {
               {t("settings.refreshModels")}
             </IconButton>
           </div>
-          <p className="text-sm text-muted">
-            {isCursor ? t("settings.llmIntroCursor") : t("settings.llmIntro")}
-          </p>
-
-          {isCursor && cursorInstall && !cursorInstall.installed ? (
-            <p className="rounded-xl border border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn">
-              {t("settings.cursorNotInstalled")}{" "}
-              <a
-                href="https://cursor.com"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold underline"
-              >
-                cursor.com
-              </a>
-            </p>
-          ) : null}
+          <p className="text-sm text-muted">{t("settings.llmIntro")}</p>
 
           <Field label={t("settings.api")} id="llm_api">
             <select
@@ -1021,47 +894,28 @@ export default function SettingsPage() {
             </select>
           </Field>
 
-          {isCursor ? (
-            <Field label={t("settings.adapterBaseUrl")} id="llm_adapter_base_url">
-              <input
-                id="llm_adapter_base_url"
-                value={cursorForm.adapter_base_url || ""}
-                onChange={(e) =>
-                  updateCursorField("adapter_base_url", e.target.value)
-                }
-                className={inputClass}
-                placeholder={CURSOR_ADAPTER_BASE_URL}
-                spellCheck={false}
-              />
-            </Field>
-          ) : (
-            <Field label={t("settings.baseUrl")} id="llm_base_url">
-              <input
-                id="llm_base_url"
-                value={orForm.base_url || ""}
-                onChange={(e) => updateOrField("base_url", e.target.value)}
-                className={inputClass}
-                placeholder={
-                  provider === "openrouter"
-                    ? OPENROUTER_BASE_URL
-                    : t("settings.baseUrlPlaceholder")
-                }
-                spellCheck={false}
-              />
-            </Field>
-          )}
+          <Field label={t("settings.baseUrl")} id="llm_base_url">
+            <input
+              id="llm_base_url"
+              value={orForm.base_url || ""}
+              onChange={(e) => updateOrField("base_url", e.target.value)}
+              className={inputClass}
+              placeholder={
+                provider === "openrouter"
+                  ? OPENROUTER_BASE_URL
+                  : t("settings.baseUrlPlaceholder")
+              }
+              spellCheck={false}
+            />
+          </Field>
 
           <Field label={t("settings.apiKey")} id="llm_token">
             <input
               id="llm_token"
               type="password"
               autoComplete="off"
-              value={activeLlmForm.token || ""}
-              onChange={(e) =>
-                isCursor
-                  ? updateCursorField("token", e.target.value)
-                  : updateOrField("token", e.target.value)
-              }
+              value={orForm.token || ""}
+              onChange={(e) => updateOrField("token", e.target.value)}
               className={inputClass}
               placeholder={
                 activeTokenConfigured
@@ -1085,34 +939,16 @@ export default function SettingsPage() {
             </p>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t("settings.defaultModel")} id="default_model">
-              <ModelCombobox
-                id="default_model"
-                value={activeLlmForm.default_model}
-                onChange={(v) =>
-                  isCursor
-                    ? updateCursorField("default_model", v)
-                    : updateOrField("default_model", v)
-                }
-                models={models}
-                loading={modelsLoading}
-                placeholder={modelPlaceholder}
-              />
-            </Field>
-            <Field label={t("settings.appName")} id="app_name">
-              <input
-                id="app_name"
-                value={activeLlmForm.app_name}
-                onChange={(e) =>
-                  isCursor
-                    ? updateCursorField("app_name", e.target.value)
-                    : updateOrField("app_name", e.target.value)
-                }
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          <Field label={t("settings.defaultModel")} id="default_model">
+            <ModelCombobox
+              id="default_model"
+              value={orForm.default_model}
+              onChange={(v) => updateOrField("default_model", v)}
+              models={models}
+              loading={modelsLoading}
+              placeholder={modelPlaceholder}
+            />
+          </Field>
 
           <div>
             <h3 className="mb-2 text-sm font-medium text-ink">{t("settings.perAgent")}</h3>
@@ -1125,9 +961,7 @@ export default function SettingsPage() {
                 >
                   <ModelCombobox
                     id={`agent-${agentId}`}
-                    value={
-                      activeLlmForm.agents?.[agentId]?.model || "composer-2.5"
-                    }
+                    value={orForm.agents?.[agentId]?.model || "composer-2.5"}
                     onChange={(v) => updateAgentModel(agentId, v)}
                     models={models}
                     loading={modelsLoading}

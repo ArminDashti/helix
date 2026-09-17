@@ -1,12 +1,38 @@
 {
-  "guardian/guard-prompt": [
-    "guardian"
+  "orchester/guard-prompt": [
+    "orchester"
+  ],
+  "orchester/gather-data": [
+    "orchester"
+  ],
+  "orchester/conduct-research": [
+    "orchester"
+  ],
+  "orchester/aggregate-research-brief": [
+    "orchester"
+  ],
+  "orchester/match-prompt-goal": [
+    "orchester"
+  ],
+  "orchester/build-result": [
+    "orchester"
+  ],
+  "orchester/publish-result": [
+    "orchester"
   ],
   "shared/understand-database": [
+    "orchester",
     "guardian",
     "data-gatherer",
     "researcher",
     "validator"
+  ],
+  "shared/generate-analytical-report": [
+    "orchester",
+    "result-builder"
+  ],
+  "guardian/guard-prompt": [
+    "guardian"
   ],
   "data-gatherer/gather-data": [
     "data-gatherer"
@@ -19,9 +45,6 @@
   ],
   "validator/match-prompt-goal": [
     "validator"
-  ],
-  "shared/generate-analytical-report": [
-    "result-builder"
   ],
   "result-builder/build-result": [
     "result-builder"

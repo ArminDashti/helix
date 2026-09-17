@@ -3,6 +3,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import yaml
 from django.test import SimpleTestCase, override_settings
 
 from .agents import AGENT_IDS
@@ -64,15 +65,13 @@ class PipelineAgentTests(SimpleTestCase):
 
 
 class SixAgentPipelineTests(SimpleTestCase):
-    def test_default_flow_uses_six_steps(self):
+    def test_default_flow_uses_single_orchester_step(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow
 
         graph = compile_pipeline_flow(default_pipeline_flow())
-        self.assertEqual(graph["entry"], "guardian")
+        self.assertEqual(graph["entry"], "orchester")
         node_ids = [node["id"] for node in graph["nodes"]]
-        self.assertEqual(len(node_ids), 6)
-        self.assertIn("validator__2", node_ids)
-        self.assertIn("publisher", node_ids)
+        self.assertEqual(node_ids, ["orchester"])
 
     def test_guardian_blocks_write_prompt(self):
         from .pipeline_run import _guardian_hard_block
@@ -154,21 +153,13 @@ class SixAgentPipelineTests(SimpleTestCase):
         user = chat.call_args[0][1]
         self.assertIn("TarikhFaktor >= '2026-06-22'", user)
 
-    def test_first_validator_fail_edge_targets_data_gatherer(self):
+    def test_orchester_self_retry_edge_on_failure(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, next_edge
 
         graph = compile_pipeline_flow(default_pipeline_flow())
-        edge = next_edge(graph, "validator", "fail", {})
+        edge = next_edge(graph, "orchester", "fail", {})
         self.assertIsNotNone(edge)
-        self.assertEqual(edge["target"], "data-gatherer")
-
-    def test_second_validator_fail_edge_targets_result_builder(self):
-        from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, next_edge
-
-        graph = compile_pipeline_flow(default_pipeline_flow())
-        edge = next_edge(graph, "validator__2", "fail", {})
-        self.assertIsNotNone(edge)
-        self.assertEqual(edge["target"], "result-builder")
+        self.assertEqual(edge["target"], "orchester")
 
     def test_prepare_data_gatherer_retry_resets_validator_state(self):
         from .pipeline_run import _prepare_data_gatherer_retry
@@ -244,26 +235,19 @@ class SixAgentPipelineTests(SimpleTestCase):
         for edge in graph.get("edges") or []:
             self.assertLessEqual(edge.get("limit", DEFAULT_EDGE_LIMIT), 5)
 
-    def test_research_flow_uses_five_steps(self):
-        from .pipeline_graph import compile_pipeline_flow, research_pipeline_flow
+    def test_research_flow_matches_default_orchester_seed(self):
+        from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, research_pipeline_flow
 
-        graph = compile_pipeline_flow(research_pipeline_flow())
-        self.assertEqual(graph["entry"], "guardian")
-        node_ids = [node["id"] for node in graph["nodes"]]
-        self.assertEqual(len(node_ids), 5)
-        self.assertIn("researcher", node_ids)
-        self.assertNotIn("data-gatherer", node_ids)
+        default_graph = compile_pipeline_flow(default_pipeline_flow())
+        research_graph = compile_pipeline_flow(research_pipeline_flow())
+        self.assertEqual(research_graph["entry"], "orchester")
+        self.assertEqual(
+            [n["id"] for n in research_graph["nodes"]],
+            [n["id"] for n in default_graph["nodes"]],
+        )
 
-    def test_research_validator_fail_targets_result_builder(self):
-        from .pipeline_graph import compile_pipeline_flow, research_pipeline_flow, next_edge
-
-        graph = compile_pipeline_flow(research_pipeline_flow())
-        edge = next_edge(graph, "validator", "fail", {})
-        self.assertIsNotNone(edge)
-        self.assertEqual(edge["target"], "result-builder")
-
-    def test_researcher_registered_in_roster(self):
-        self.assertIn("researcher", AGENT_IDS)
+    def test_orchester_registered_in_roster(self):
+        self.assertIn("orchester", AGENT_IDS)
 
     def test_web_searcher_registered_as_sub_agent(self):
         from .agents import SUB_AGENT_IDS, is_sub_agent
@@ -416,15 +400,16 @@ class DocsCatalogPromptTests(SimpleTestCase):
 
 
 class LlmSettingsTests(SimpleTestCase):
-    def test_cursor_provider_uses_adapter_base_url(self):
+    def test_cursor_provider_migrates_to_openai_compatible(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "helix.config.yaml"
             with override_settings(HELIX_CONFIG_PATH=str(config_path)):
                 save_config({"provider": "cursor"})
-                self.assertEqual(get_provider(), "cursor")
-                self.assertEqual(get_llm_base_url(), "http://127.0.0.1:8130/v1")
-                update_provider("cursor")
-                self.assertEqual(get_provider(), "cursor")
+                self.assertEqual(get_provider(), "openai_compatible")
+                raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(raw.get("provider"), "openai_compatible")
+                with self.assertRaises(ValueError):
+                    update_provider("cursor")
 
     def test_openai_compatible_requires_stored_base_url(self):
         with tempfile.TemporaryDirectory() as tmp:

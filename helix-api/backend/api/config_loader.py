@@ -1,8 +1,7 @@
-"""Read/write helix.config.yaml (database + openrouter + cursor LLM)."""
+"""Read/write helix.config.yaml (database + openrouter LLM)."""
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import re
@@ -30,10 +29,8 @@ from .agents import (
 AGENT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TOKEN_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_OPENROUTER_TOKEN_ENV = "OPENROUTER_TOKEN"
-DEFAULT_CURSOR_TOKEN_ENV = "CURSOR_API_KEY"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_CURSOR_ADAPTER_BASE_URL = "http://127.0.0.1:8130/v1"
-VALID_PROVIDERS = ("openrouter", "openai_compatible", "cursor")
+VALID_PROVIDERS = ("openrouter", "openai_compatible")
 
 DEFAULT_DATABASE = {
     # Built-in AdventureWorks LT sample SQLite (seeded on first start).
@@ -53,22 +50,7 @@ DEFAULT_DATABASE = {
 DEFAULT_LLM_MODEL = "composer-2.5"
 
 DEFAULT_AGENT_MODELS = {
-    "guardian": DEFAULT_LLM_MODEL,
-    "data-gatherer": DEFAULT_LLM_MODEL,
-    "researcher": DEFAULT_LLM_MODEL,
-    "validator": DEFAULT_LLM_MODEL,
-    "result-builder": DEFAULT_LLM_MODEL,
-    "publisher": DEFAULT_LLM_MODEL,
-    "web-searcher": DEFAULT_LLM_MODEL,
-}
-
-DEFAULT_CURSOR_AGENT_MODELS = {
-    "guardian": DEFAULT_LLM_MODEL,
-    "data-gatherer": DEFAULT_LLM_MODEL,
-    "researcher": DEFAULT_LLM_MODEL,
-    "validator": DEFAULT_LLM_MODEL,
-    "result-builder": DEFAULT_LLM_MODEL,
-    "publisher": DEFAULT_LLM_MODEL,
+    "orchester": DEFAULT_LLM_MODEL,
     "web-searcher": DEFAULT_LLM_MODEL,
 }
 
@@ -78,16 +60,6 @@ DEFAULT_OPENROUTER = {
     "app_name": "Helix",
     "default_model": DEFAULT_LLM_MODEL,
     "agents": {agent_id: {"model": model} for agent_id, model in DEFAULT_AGENT_MODELS.items()},
-}
-
-DEFAULT_CURSOR = {
-    "token_env": DEFAULT_CURSOR_TOKEN_ENV,
-    "adapter_base_url": DEFAULT_CURSOR_ADAPTER_BASE_URL,
-    "app_name": "Helix",
-    "default_model": DEFAULT_LLM_MODEL,
-    "agents": {
-        agent_id: {"model": model} for agent_id, model in DEFAULT_CURSOR_AGENT_MODELS.items()
-    },
 }
 
 DEFAULT_PROVIDER = "openrouter"
@@ -137,7 +109,7 @@ def _migrate_agent_model_map(agents: dict[str, Any]) -> dict[str, Any]:
 def _migrate_legacy_agent_ids(data: dict[str, Any]) -> dict[str, Any]:
     """Rewrite retired pipeline agent ids in agent-model maps and graphs only."""
     migrated = deepcopy(data)
-    for section in ("openrouter", "cursor"):
+    for section in ("openrouter",):
         block = migrated.get(section)
         if isinstance(block, dict) and isinstance(block.get("agents"), dict):
             block["agents"] = _migrate_agent_model_map(block["agents"])
@@ -185,12 +157,59 @@ def _drop_stale_pipeline_graph(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
+    """Drop saved multi-agent graphs so the single-Orchester default is restored."""
+    from .agents import PHASE_AGENT_IDS
+
+    needs_reset = False
+    graph = data.get("pipeline_graph")
+    if isinstance(graph, dict):
+        node_ids = {
+            str(node.get("id") or "").strip()
+            for node in (graph.get("nodes") or [])
+            if isinstance(node, dict)
+        }
+        if node_ids != {"orchester"}:
+            needs_reset = True
+        if node_ids & set(PHASE_AGENT_IDS):
+            needs_reset = True
+    flow = data.get("pipeline_flow")
+    if isinstance(flow, dict) and flow.get("type") == "stages":
+        children = flow.get("children") or []
+        agent_ids = [
+            str(child.get("agent_id") or "").strip()
+            for child in children
+            if isinstance(child, dict)
+        ]
+        if agent_ids != ["orchester"]:
+            needs_reset = True
+    if not needs_reset:
+        return data
+    out = dict(data)
+    out.pop("pipeline_graph", None)
+    out.pop("pipeline_flow", None)
+    return out
+
+
+def _migrate_cursor_provider(data: dict[str, Any]) -> dict[str, Any]:
+    raw = data.get("provider")
+    if isinstance(raw, str) and raw.strip().lower() == "cursor":
+        out = dict(data)
+        out["provider"] = "openai_compatible"
+        return out
+    return data
+
+
 def load_config() -> dict[str, Any]:
     path = ensure_config_exists()
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
         data = {}
-    migrated = _drop_stale_pipeline_graph(_migrate_legacy_agent_ids(data))
+    migrated = _ensure_single_orchester_pipeline(
+        _drop_stale_pipeline_graph(
+            _migrate_legacy_agent_ids(_migrate_cursor_provider(data))
+        )
+    )
     if not isinstance(migrated, dict):
         migrated = {}
     if migrated != data:
@@ -481,14 +500,6 @@ def get_openrouter_token_env() -> str:
     return _token_env_from_section(raw, DEFAULT_OPENROUTER_TOKEN_ENV)
 
 
-def get_cursor_token_env() -> str:
-    data = load_config()
-    raw = data.get("cursor") or {}
-    if not isinstance(raw, dict):
-        raw = {}
-    return _token_env_from_section(raw, DEFAULT_CURSOR_TOKEN_ENV)
-
-
 def _section_stored_token(raw: Any) -> str:
     if not isinstance(raw, dict):
         return ""
@@ -512,9 +523,9 @@ def _rewrite_unresolvable_hostname_to_localhost(base_url: str) -> str:
     """
     Rewrite an unresolvable LLM hostname to localhost.
 
-    Why: config may point at a container hostname (e.g. `cursor-openai-adapter-api`)
-    which is only resolvable from inside Docker. When running on the host, DNS
-    will fail, and the pipeline should fall back to `127.0.0.1`.
+    Why: config may point at a container hostname which is only resolvable from
+    inside Docker. When running on the host, DNS will fail, and the pipeline
+    should fall back to `127.0.0.1`.
     """
     parsed = urlparse(base_url)
     hostname = parsed.hostname
@@ -531,24 +542,8 @@ def _rewrite_unresolvable_hostname_to_localhost(base_url: str) -> str:
         return parsed._replace(netloc=netloc).geturl()
 
 
-def get_cursor_adapter_base_url() -> str:
-    """OpenAI-compatible chat bridge for Cursor Cloud (local cursor-api by default)."""
-    data = load_config()
-    raw = data.get("cursor") or {}
-    if not isinstance(raw, dict):
-        raw = {}
-    stored = _rewrite_unresolvable_hostname_to_localhost(
-        _normalize_base_url(raw.get("adapter_base_url"))
-    )
-    if stored:
-        return stored
-    return DEFAULT_CURSOR_ADAPTER_BASE_URL
-
-
 def get_llm_base_url() -> str:
-    """Chat/models host: Cursor adapter, OpenRouter stored URL, or OpenRouter default."""
-    if get_provider() == "cursor":
-        return get_cursor_adapter_base_url()
+    """Chat/models host: OpenRouter stored URL or OpenRouter default."""
     data = load_config()
     raw = data.get("openrouter") or {}
     if not isinstance(raw, dict):
@@ -577,15 +572,6 @@ def get_llm_timeout_seconds() -> int:
     except (TypeError, ValueError):
         value = DEFAULT_LLM_TIMEOUT_SECONDS
     return max(30, min(value, 900))
-
-
-def get_cursor_token() -> str:
-    """Cursor API key from Settings (config), then optional env fallback."""
-    data = load_config()
-    token = _section_stored_token(data.get("cursor"))
-    if token:
-        return token
-    return os.environ.get(get_cursor_token_env(), "").strip()
 
 
 _MODELS_CACHE: dict[str, Any] = {"fetched_at": 0.0, "models": [], "base_url": ""}
@@ -785,6 +771,9 @@ def get_provider() -> str:
     raw = data.get("provider")
     if isinstance(raw, str):
         value = raw.strip().lower()
+        if value == "cursor":
+            update_provider("openai_compatible")
+            return "openai_compatible"
         if value in VALID_PROVIDERS:
             return value
     return DEFAULT_PROVIDER
@@ -794,7 +783,7 @@ def update_provider(provider: str) -> str:
     value = (provider or "").strip().lower()
     if value not in VALID_PROVIDERS:
         raise ValueError(
-            "provider must be openrouter, openai_compatible, or cursor"
+            "provider must be openrouter or openai_compatible"
         )
     data = load_config()
     data["provider"] = value
@@ -850,57 +839,6 @@ def update_branding(payload: dict[str, Any]) -> dict[str, str]:
     }
     save_config(data)
     return get_branding()
-
-
-def detect_cursor_install() -> dict[str, Any]:
-    """Return whether the Cursor desktop app appears installed on this machine."""
-    import shutil
-
-    which = shutil.which("cursor")
-    if which and Path(which).is_file():
-        return {
-            "installed": True,
-            "detail": "",
-            "path": which,
-        }
-
-    candidates: list[Path] = []
-    local_app = os.environ.get("LOCALAPPDATA", "").strip()
-    if local_app:
-        candidates.append(Path(local_app) / "Programs" / "cursor" / "Cursor.exe")
-        candidates.append(Path(local_app) / "Programs" / "Cursor" / "Cursor.exe")
-    program_files = os.environ.get("ProgramFiles", "").strip()
-    if program_files:
-        candidates.append(Path(program_files) / "Cursor" / "Cursor.exe")
-    home = Path.home()
-    candidates.extend(
-        [
-            home / "AppData" / "Local" / "Programs" / "cursor" / "Cursor.exe",
-            home / "Applications" / "Cursor.app",
-            Path("/Applications/Cursor.app"),
-            Path("/usr/bin/cursor"),
-            Path("/usr/local/bin/cursor"),
-        ]
-    )
-    for path in candidates:
-        try:
-            if path.exists():
-                return {
-                    "installed": True,
-                    "detail": "",
-                    "path": str(path),
-                }
-        except OSError:
-            continue
-
-    return {
-        "installed": False,
-        "detail": (
-            "Cursor is not installed on this machine. "
-            "Install it from https://cursor.com then try again."
-        ),
-        "path": "",
-    }
 
 
 def get_custom_agents() -> list[dict[str, str]]:
@@ -1034,16 +972,28 @@ def set_agent_disabled(agent_id: str, disabled: bool) -> dict[str, Any]:
 
 
 def known_agent_ids() -> set[str]:
-    return {meta["id"] for meta in get_all_agent_metas()}
+    from .agents import PHASE_AGENT_IDS
+
+    ids = {meta["id"] for meta in get_all_agent_metas()}
+    ids.update(PHASE_AGENT_IDS)
+    return ids
 
 
 def get_agent_meta(agent_id: str) -> dict[str, Any]:
-    from .agents import resolve_agent_definition_id
+    from .agents import PHASE_AGENT_BY_ID, resolve_agent_definition_id
 
     definition_id = resolve_agent_definition_id(agent_id)
     for meta in get_all_agent_metas():
         if meta["id"] == definition_id:
             return dict(meta)
+    phase = PHASE_AGENT_BY_ID.get(definition_id)
+    if phase:
+        return {
+            **phase,
+            "builtin": True,
+            "disabled": False,
+            "phase": True,
+        }
     raise KeyError(f"Unknown agent: {agent_id}")
 
 
@@ -1147,7 +1097,7 @@ def delete_custom_agent(agent_id: str) -> None:
         profiles.pop(cleaned_id, None)
         data["agent_profiles"] = profiles
 
-    for section in ("openrouter", "cursor"):
+    for section in ("openrouter",):
         section_data = data.get(section)
         if isinstance(section_data, dict) and isinstance(section_data.get("agents"), dict):
             agents = dict(section_data["agents"])
@@ -1273,202 +1223,6 @@ def agent_company_label(agent_id: str) -> str:
     return str(role or agent_id).strip()
 
 
-_CURSOR_MODELS_CACHE: dict[str, Any] = {"fetched_at": 0.0, "models": []}
-_CURSOR_MODELS_CACHE_TTL_SEC = 600
-CURSOR_CLOUD_API_BASE = "https://api.cursor.com"
-
-
-def cursor_cloud_json(
-    method: str,
-    path: str,
-    payload: dict[str, Any] | None = None,
-    timeout: int = 30,
-) -> Any:
-    """Call Cursor Cloud Agents API with Basic auth (API key as username)."""
-    token = get_cursor_token()
-    if not token:
-        raise ValueError("Cursor API key is not set")
-    basic = base64.b64encode(f"{token}:".encode("utf-8")).decode("ascii")
-    url = f"{CURSOR_CLOUD_API_BASE}{path}"
-    body = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {
-        "Authorization": f"Basic {basic}",
-        "Accept": "application/json",
-    }
-    if body is not None:
-        headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=body, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            raw = resp.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise ValueError(f"Cursor API request failed ({exc.code}): {detail}") from exc
-    except urllib.error.URLError as exc:
-        raise ValueError(f"Cursor API request failed: {exc.reason}") from exc
-    if not raw.strip():
-        return {}
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Cursor API returned non-JSON") from exc
-
-
-def fetch_cursor_models(*, force: bool = False) -> list[dict[str, str]]:
-    """
-    Fetch Cursor model catalog via Cloud Agents API (cached ~10 minutes).
-    Returns list of {id, name}. Raises ValueError if token missing or request fails.
-    """
-    now = time.time()
-    if (
-        not force
-        and _CURSOR_MODELS_CACHE["models"]
-        and (now - float(_CURSOR_MODELS_CACHE["fetched_at"])) < _CURSOR_MODELS_CACHE_TTL_SEC
-    ):
-        return list(_CURSOR_MODELS_CACHE["models"])
-
-    payload = cursor_cloud_json("GET", "/v1/models")
-
-    raw_list = None
-    if isinstance(payload, dict):
-        raw_list = payload.get("items") or payload.get("models") or payload.get("data")
-    if not isinstance(raw_list, list):
-        raise ValueError("Unexpected Cursor models response")
-
-    models: list[dict[str, str]] = []
-    for item in raw_list:
-        if not isinstance(item, dict):
-            continue
-        model_id = item.get("id")
-        if not model_id:
-            continue
-        name = item.get("displayName") or item.get("name") or model_id
-        models.append({"id": str(model_id), "name": str(name)})
-
-    models = _catalog_with_auto(models)
-    _CURSOR_MODELS_CACHE["fetched_at"] = now
-    _CURSOR_MODELS_CACHE["models"] = models
-    return list(models)
-
-
-def get_cursor_settings() -> dict[str, Any]:
-    data = load_config()
-    raw = data.get("cursor") or {}
-    if not isinstance(raw, dict):
-        raw = {}
-
-    agents_raw = raw.get("agents") if isinstance(raw.get("agents"), dict) else {}
-    known = known_agent_ids()
-    agents: dict[str, dict[str, str]] = {}
-    for agent_id, default_model in DEFAULT_CURSOR_AGENT_MODELS.items():
-        if agent_id not in known:
-            continue
-        entry = agents_raw.get(agent_id) if isinstance(agents_raw.get(agent_id), dict) else {}
-        model = entry.get("model") if entry else None
-        agents[agent_id] = {
-            "model": str(model).strip() if model else default_model,
-        }
-    default_model = (
-        DEFAULT_CURSOR["default_model"]
-        if not raw.get("default_model")
-        else str(raw.get("default_model")).strip()
-    )
-    for meta in get_custom_agents():
-        agent_id = meta["id"]
-        entry = agents_raw.get(agent_id) if isinstance(agents_raw.get(agent_id), dict) else {}
-        model = entry.get("model") if entry else None
-        if model and str(model).strip():
-            agents[agent_id] = {"model": str(model).strip()}
-        elif agent_id in agents_raw:
-            agents[agent_id] = {"model": default_model}
-
-    token = get_cursor_token()
-    adapter = _rewrite_unresolvable_hostname_to_localhost(
-        _normalize_base_url(raw.get("adapter_base_url"))
-    ) or DEFAULT_CURSOR_ADAPTER_BASE_URL
-    return {
-        "app_name": (
-            DEFAULT_CURSOR["app_name"]
-            if raw.get("app_name") in (None, "")
-            else str(raw.get("app_name"))
-        ),
-        "default_model": default_model,
-        "agents": agents,
-        "adapter_base_url": adapter,
-        "token_configured": bool(token),
-    }
-
-
-def update_cursor_settings(payload: dict[str, Any]) -> dict[str, Any]:
-    data = load_config()
-    current = get_cursor_settings()
-    raw = data.get("cursor") if isinstance(data.get("cursor"), dict) else {}
-    stored_token = _section_stored_token(raw)
-    stored_env = _token_env_from_section(raw, DEFAULT_CURSOR_TOKEN_ENV)
-    stored_adapter = (
-        _rewrite_unresolvable_hostname_to_localhost(
-            _normalize_base_url(raw.get("adapter_base_url"))
-        )
-        or DEFAULT_CURSOR_ADAPTER_BASE_URL
-    )
-
-    if "token" in payload:
-        incoming = payload.get("token")
-        if incoming is not None and str(incoming).strip():
-            stored_token = str(incoming).strip()
-    if "token_env" in payload:
-        stored_env = _normalize_token_env(
-            payload["token_env"], DEFAULT_CURSOR_TOKEN_ENV
-        )
-    if "adapter_base_url" in payload:
-        value = payload.get("adapter_base_url")
-        if value is None or str(value).strip() == "":
-            stored_adapter = DEFAULT_CURSOR_ADAPTER_BASE_URL
-        else:
-            stored_adapter = (
-                _rewrite_unresolvable_hostname_to_localhost(
-                    _normalize_base_url(value)
-                )
-                or DEFAULT_CURSOR_ADAPTER_BASE_URL
-            )
-    if "app_name" in payload:
-        value = payload["app_name"]
-        current["app_name"] = DEFAULT_CURSOR["app_name"] if value in (None, "") else str(value)
-    if "default_model" in payload:
-        value = payload["default_model"]
-        if value is None or str(value).strip() == "":
-            raise ValueError("default_model must be a non-empty string")
-        current["default_model"] = str(value).strip()
-
-    agents_payload = payload.get("agents")
-    if isinstance(agents_payload, dict):
-        allowed_ids = known_agent_ids()
-        for agent_id, entry in agents_payload.items():
-            agent_key = str(agent_id)
-            if agent_key not in allowed_ids:
-                continue
-            if isinstance(entry, dict):
-                model = entry.get("model")
-            else:
-                model = entry
-            if model is None or str(model).strip() == "":
-                raise ValueError(f"agents.{agent_key}.model must be a non-empty string")
-            current["agents"][agent_key] = {"model": str(model).strip()}
-
-    section: dict[str, Any] = {
-        "token_env": stored_env,
-        "adapter_base_url": stored_adapter,
-        "app_name": current["app_name"],
-        "default_model": current["default_model"],
-        "agents": deepcopy(current["agents"]),
-    }
-    if stored_token:
-        section["token"] = stored_token
-    data["cursor"] = section
-    save_config(data)
-    return get_cursor_settings()
-
-
 def get_sql_settings() -> dict[str, Any]:
     data = load_config()
     raw = data.get("sql")
@@ -1491,15 +1245,18 @@ def get_sql_settings() -> dict[str, Any]:
 
 def get_active_provider_settings() -> dict[str, Any]:
     provider = get_provider()
-    if provider == "cursor":
-        return {"provider": provider, "settings": get_cursor_settings()}
     return {"provider": provider, "settings": get_openrouter_settings()}
 
 
 def get_agent_model(agent_id: str) -> str:
+    from .agents import PHASE_AGENT_BY_ID, resolve_agent_definition_id
+
+    lookup_id = resolve_agent_definition_id(agent_id)
+    if lookup_id in PHASE_AGENT_BY_ID:
+        lookup_id = "orchester"
     settings = get_active_provider_settings()["settings"]
     agents = settings.get("agents") if isinstance(settings.get("agents"), dict) else {}
-    entry = agents.get(agent_id)
+    entry = agents.get(lookup_id) or agents.get(agent_id)
     if isinstance(entry, dict):
         model = str(entry.get("model") or "").strip()
         if model and model != "auto":

@@ -24,19 +24,9 @@
     "web-searcher"
   ],
   "core-behavior": [
-    "guardian",
-    "data-gatherer",
-    "researcher",
-    "validator",
-    "result-builder",
-    "publisher"
+    "orchester"
   ],
   "output-contract": [
-    "guardian",
-    "data-gatherer",
-    "researcher",
-    "validator",
-    "result-builder",
-    "publisher"
+    "orchester"
   ]
 }

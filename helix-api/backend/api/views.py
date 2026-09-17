@@ -19,15 +19,11 @@ from .config_loader import (
     create_custom_agent,
     database_to_connection_string,
     delete_custom_agent,
-    detect_cursor_install,
-    fetch_cursor_models,
     fetch_openrouter_models,
     get_active_provider_settings,
     get_agent_display_names,
     get_agent_meta,
     get_branding,
-    get_cursor_settings,
-    get_cursor_token,
     get_database_engine,
     get_database_settings,
     get_llm_base_url,
@@ -39,7 +35,6 @@ from .config_loader import (
     update_agent_display_name,
     update_agent_fields,
     update_branding,
-    update_cursor_settings,
     update_database_settings,
     update_openrouter_settings,
     update_provider,
@@ -170,39 +165,8 @@ def health(request: HttpRequest) -> JsonResponse:
             "detail": "API key is not set",
         }
 
-    if get_cursor_token():
-        cursor: dict[str, Any] = {"status": "configured", "detail": ""}
-    else:
-        cursor = {
-            "status": "missing_token",
-            "detail": "Cursor API key is not set",
-        }
-
     provider = get_provider()
-    if provider == "cursor":
-        install = detect_cursor_install()
-        if not install.get("installed"):
-            llm = {
-                "status": "not_configured",
-                "detail": install.get("detail")
-                or (
-                    "Cursor is not installed on this machine. "
-                    "Install it from https://cursor.com then try again."
-                ),
-            }
-        elif not get_cursor_token():
-            llm = {
-                "status": "missing_token",
-                "detail": "Cursor API key is not set",
-            }
-        elif not get_llm_base_url():
-            llm = {
-                "status": "not_configured",
-                "detail": "Cursor adapter base URL is not set",
-            }
-        else:
-            llm = {"status": "configured", "detail": ""}
-    elif not get_openrouter_token():
+    if not get_openrouter_token():
         llm = {"status": "missing_token", "detail": "API key is not set"}
     elif provider == "openai_compatible" and not get_llm_base_url():
         llm = {"status": "not_configured", "detail": "Base URL is not set"}
@@ -217,7 +181,6 @@ def health(request: HttpRequest) -> JsonResponse:
             "database": stamp(database),
             "llm": stamp(llm),
             "openrouter": stamp(openrouter),
-            "cursor": stamp(cursor),
             "provider": provider,
         }
     )
@@ -675,42 +638,6 @@ def admin_branding(request: HttpRequest) -> JsonResponse:
     except ValueError as exc:
         return _error(str(exc))
     return JsonResponse({"branding": branding})
-
-
-@csrf_exempt
-@require_http_methods(["GET", "PUT"])
-def admin_cursor(request: HttpRequest) -> JsonResponse:
-    if request.method == "GET":
-        return JsonResponse({"cursor": get_cursor_settings()})
-    try:
-        body = _json_body(request)
-    except ValueError as exc:
-        return _error(str(exc))
-    payload = body.get("cursor") if isinstance(body.get("cursor"), dict) else body
-    try:
-        cursor = update_cursor_settings(payload)
-    except ValueError as exc:
-        return _error(str(exc))
-    return JsonResponse({"cursor": cursor})
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def admin_cursor_models(request: HttpRequest) -> JsonResponse:
-    force = request.GET.get("force") in ("1", "true", "yes")
-    try:
-        models = fetch_cursor_models(force=force)
-    except ValueError as exc:
-        message = str(exc)
-        status = 400 if "is not set" in message else 502
-        return _error(message, status=status)
-    return JsonResponse({"models": models})
-
-
-@csrf_exempt
-@require_http_methods(["GET"])
-def admin_cursor_install_status(request: HttpRequest) -> JsonResponse:
-    return JsonResponse(detect_cursor_install())
 
 
 @csrf_exempt

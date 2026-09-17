@@ -1,42 +1,20 @@
 # Agent registry
 
-Pipeline order (default modes):
+Pipeline (all modes):
 
 ```text
-guardian
-  → data-gatherer
-  → validator
-  → result-builder
-  → validator
-  → publisher
-      (validator fail → data-gatherer or result-builder, limit 5)
-```
-
-Research mode (`mode=research`):
-
-```text
-guardian
-  → researcher
-      (per tier low/medium/high: data-gatherer → validator)
-      → aggregates research_brief
-  → result-builder
-  → validator
-  → publisher
+orchester
+  (phases: guard → gather|research → validate → build → validate → publish)
 ```
 
 | # | Id | When to use |
 |---|-----|-------------|
-| 1 | `guardian` | Block dangerous prompts and check permission |
-| 2 | `data-gatherer` | Cheap SELECT + fetch (row-capped) |
-| 3 | `researcher` | Research mode: tiered gather/validate and aggregate brief |
-| 4 | `validator` | Does the fetch or built result match the user prompt? |
-| 5 | `result-builder` | Report from fetched rows (+ research brief in research mode) |
-| 6 | `publisher` | Package UI payload |
+| 1 | `orchester` | Single agent that guards, gathers/researches, builds, and packages |
 
-**Sub-agents** (not pipeline steps — invoked by callers when needed):
+**Sub-agents** (not pipeline steps — invoked by Orchester when needed):
 
 | Id | When to use |
 |----|-------------|
-| `web-searcher` | Public web search when warehouse/catalog cannot answer external-fact asks (invoked by `data-gatherer` or `researcher`) |
+| `web-searcher` | Public web search when warehouse/catalog cannot answer external-fact asks |
 
-**Models:** set per agent under `openrouter.agents.<id>.model` in `helix.config.yaml` (see `helix.config.example.yaml`). Never hardcode models in `AGENT.md`.
+**Models:** set under `openrouter.agents.orchester.model` in `helix.config.yaml` (see `helix.config.example.yaml`). Never hardcode models in `AGENT.md`.

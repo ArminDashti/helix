@@ -35,17 +35,6 @@ urlpatterns = [
         views.admin_openrouter_models,
         name="admin-openrouter-models",
     ),
-    path("admin/cursor/", views.admin_cursor, name="admin-cursor"),
-    path(
-        "admin/cursor/models/",
-        views.admin_cursor_models,
-        name="admin-cursor-models",
-    ),
-    path(
-        "admin/cursor/install-status/",
-        views.admin_cursor_install_status,
-        name="admin-cursor-install-status",
-    ),
     path("admin/pipeline-graph/", views.admin_pipeline_graph, name="admin-pipeline-graph"),
     path("admin/users/", views.admin_users, name="admin-users"),
     path("admin/users/<str:user_id>/", views.admin_user_detail, name="admin-user-detail"),

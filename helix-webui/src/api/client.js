@@ -432,27 +432,6 @@ export async function fetchOpenRouterModels({ force = false, silent = false } = 
   return requestJson(`/api/admin/openrouter/models/${qs}`, { silent });
 }
 
-export async function fetchCursorSettings() {
-  return requestJson("/api/admin/cursor/");
-}
-
-export async function saveCursorSettings(cursor) {
-  return requestJson("/api/admin/cursor/", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ cursor }),
-  });
-}
-
-export async function fetchCursorModels({ force = false, silent = false } = {}) {
-  const qs = force ? "?force=1" : "";
-  return requestJson(`/api/admin/cursor/models/${qs}`, { silent });
-}
-
-export async function fetchCursorInstallStatus({ silent = false } = {}) {
-  return requestJson("/api/admin/cursor/install-status/", { silent });
-}
-
 export async function fetchPipelineBundle() {
   return requestJson("/api/admin/pipeline-graph/");
 }

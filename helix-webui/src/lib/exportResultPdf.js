@@ -3,7 +3,13 @@ import { jsPDF } from "jspdf";
 import { fetchBranding } from "../api/client.js";
 import { formatDateTime } from "../i18n/format.js";
 import { hasPersianScript } from "../utils/textDirection.js";
-import { DEFAULT_PDF_DESIGN, loadPdfDesign, orderedGridColumns } from "./pdfDesign.js";
+import {
+  DEFAULT_PDF_DESIGN,
+  elementStyle,
+  loadPdfDesign,
+  normalizePdfDesign,
+  orderedGridColumns,
+} from "./pdfDesign.js";
 
 function escapeHtml(value) {
   return String(value || "")
@@ -80,6 +86,13 @@ function chartDataUrlFromInstance(instance) {
   }
 }
 
+function cssBox(el) {
+  const bw = el.borderWidthPx || 0;
+  const border =
+    bw > 0 ? `${bw}px solid ${el.color === "#111111" ? "#3d9b82" : el.color}` : "none";
+  return `padding:${el.paddingPx}px;border:${border};border-radius:${el.borderRadiusPx}px;background:${el.backgroundColor};color:${el.color};font-family:${el.fontFamily};font-size:${el.fontSizePx}px;box-sizing:border-box;`;
+}
+
 /**
  * Build HTML for PDF / design preview.
  * @param {object} opts
@@ -96,8 +109,9 @@ export function buildPdfHtml({
   logoDataUrl = "",
   companyLogoDataUrl = "",
   design = DEFAULT_PDF_DESIGN,
+  footerSampleText = "",
 }) {
-  const prefs = { ...DEFAULT_PDF_DESIGN, ...design };
+  const prefs = normalizePdfDesign(design);
   const dir = resolveDir(language, textReport || prompt);
   const lang = dir === "rtl" ? "fa" : "en";
   const safeReport = escapeHtml(textReport);
@@ -105,83 +119,75 @@ export function buildPdfHtml({
   const safeCompanyLogoUrl = escapeHtml(companyLogoDataUrl);
   const reportTitle = escapeHtml((prompt || "").trim() || labels.pdfHeading);
 
-  const borderW = Math.min(
-    8,
-    Math.max(0, Number(prefs.borderWidthPx) || 0),
-  );
-  const radius = Math.min(
-    24,
-    Math.max(0, Number(prefs.borderRadiusPx) || 0),
-  );
-  const fontFamily =
-    String(prefs.fontFamily || DEFAULT_PDF_DESIGN.fontFamily).trim() ||
-    DEFAULT_PDF_DESIGN.fontFamily;
-  const headerBorder = borderW > 0 ? `${borderW}px solid #1e3a5f` : "none";
-  const accentBorder =
-    borderW > 0 ? `${Math.max(borderW, 1)}px solid #3d9b82` : "none";
-  const articleBorder =
-    borderW > 0 ? `${Math.max(borderW + 1, 2)}px solid #3d9b82` : "none";
-  const cellBorder = borderW > 0 ? `${borderW}px solid #cfe6dd` : "none";
-  const thBorder = borderW > 0 ? `${borderW}px solid #1e3a5f` : "none";
-
-  const S = {
-    root: `font-family:${fontFamily};color:#111;background:#fff;padding:16px;box-sizing:border-box;`,
-    header: `display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px 0;padding:14px 12px;border:${headerBorder};background:transparent;direction:ltr;`,
-    headerSide: `flex:0 0 168px;display:flex;align-items:center;`,
-    headerCenter: `flex:1 1 auto;min-width:0;`,
-    logo: `height:56px;width:auto;max-width:160px;object-fit:contain;`,
-    title: `text-align:center;font-size:16px;font-weight:600;margin:0;color:#111;line-height:1.7;overflow:visible;white-space:normal;`,
-    chartWrap: `margin-bottom:14px;`,
-    chart: `max-width:100%;height:auto;border:${accentBorder};border-radius:${radius}px;display:block;`,
-    article: `margin-bottom:14px;padding:14px 16px;border:${articleBorder};border-radius:${radius}px;background:#f6fbf9;white-space:pre-wrap;line-height:1.6;font-size:14px;`,
-    table: `width:100%;border-collapse:collapse;margin-top:14px;font-size:13px;line-height:1.8;`,
-    th: `border:${thBorder};padding:14px 10px;text-align:center;vertical-align:middle;background:transparent;color:#111;font-weight:600;line-height:1.8;overflow:visible;`,
-    td: `border:${cellBorder};padding:12px 10px;text-align:center;vertical-align:middle;line-height:1.8;`,
-    tdEven: `border:${cellBorder};padding:12px 10px;text-align:center;vertical-align:middle;line-height:1.8;background:#eef7f4;`,
-  };
+  const headerEl = elementStyle(prefs, "header");
+  const helixEl = elementStyle(prefs, "helixLogo");
+  const companyEl = elementStyle(prefs, "companyLogo");
+  const titleEl = elementStyle(prefs, "title");
+  const chartsEl = elementStyle(prefs, "charts");
+  const textEl = elementStyle(prefs, "text");
+  const gridEl = elementStyle(prefs, "grid");
+  const footerEl = elementStyle(prefs, "footer");
 
   const logoImgInline =
-    prefs.showHeader && prefs.showHelixLogo && safeLogoUrl
-      ? `<img style="${S.logo}" src="${safeLogoUrl}" alt="${escapeHtml(labels.pdfLogoAlt)}" />`
+    headerEl.visible && helixEl.visible && safeLogoUrl
+      ? `<div data-canvas-element="helixLogo" style="${cssBox(helixEl)}display:flex;align-items:center;"><img style="height:56px;width:auto;max-width:160px;object-fit:contain;" src="${safeLogoUrl}" alt="${escapeHtml(labels.pdfLogoAlt)}" /></div>`
       : "";
   const companyLogoImgInline =
-    prefs.showHeader && prefs.showCompanyLogo && safeCompanyLogoUrl
-      ? `<img style="${S.logo}" src="${safeCompanyLogoUrl}" alt="${escapeHtml(labels.pdfCompanyLogoAlt)}" />`
+    headerEl.visible && companyEl.visible && safeCompanyLogoUrl
+      ? `<div data-canvas-element="companyLogo" style="${cssBox(companyEl)}display:flex;align-items:center;justify-content:flex-end;"><img style="height:56px;width:auto;max-width:160px;object-fit:contain;" src="${safeCompanyLogoUrl}" alt="${escapeHtml(labels.pdfCompanyLogoAlt)}" /></div>`
       : "";
   const titleInline =
-    prefs.showHeader && prefs.showTitle
-      ? `<h1 style="${S.title}" dir="${dir}">${reportTitle}</h1>`
+    headerEl.visible && titleEl.visible
+      ? `<div data-canvas-element="title" style="${cssBox(titleEl)}flex:1;text-align:center;font-weight:600;line-height:1.7;white-space:normal;" dir="${dir}"><h1 style="margin:0;font:inherit;font-size:inherit;font-weight:inherit;">${reportTitle}</h1></div>`
       : "";
-  const headerInline = prefs.showHeader
-    ? `<div style="${S.header}">
-        <div style="${S.headerSide}justify-content:flex-start;">${logoImgInline}</div>
-        <div style="${S.headerCenter}">${titleInline}</div>
-        <div style="${S.headerSide}justify-content:flex-end;">${companyLogoImgInline}</div>
-      </div>`
-    : "";
+
+  const headerInner = [logoImgInline, titleInline, companyLogoImgInline]
+    .filter(Boolean)
+    .join("");
+  const headerInline =
+    headerEl.visible && headerInner
+      ? `<div data-canvas-element="header" style="${cssBox(headerEl)}display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px 0;direction:ltr;">${headerInner}</div>`
+      : headerEl.visible
+        ? `<div data-canvas-element="header" style="${cssBox(headerEl)}display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0 0 14px 0;direction:ltr;min-height:1px;"></div>`
+        : "";
 
   const chartImgInline =
-    prefs.showCharts && chartImages.length
-      ? chartImages
+    chartsEl.visible && chartImages.length
+      ? `<div data-canvas-element="charts" style="${cssBox(chartsEl)}">${chartImages
           .filter(Boolean)
           .map(
             (src) =>
-              `<div style="${S.chartWrap}"><img style="${S.chart}" src="${src}" alt="${escapeHtml(labels.pdfChartAlt)}" /></div>`,
+              `<div style="margin-bottom:14px;"><img style="max-width:100%;height:auto;display:block;border-radius:${chartsEl.borderRadiusPx}px;" src="${src}" alt="${escapeHtml(labels.pdfChartAlt)}" /></div>`,
           )
-          .join("")
-      : "";
+          .join("")}</div>`
+      : chartsEl.visible
+        ? `<div data-canvas-element="charts" style="${cssBox(chartsEl)}min-height:8px;"></div>`
+        : "";
 
   const articleInline =
-    prefs.showText && textReport
-      ? `<div style="${S.article}" dir="${dir}">${safeReport}</div>`
-      : "";
+    textEl.visible && textReport
+      ? `<div data-canvas-element="text" style="${cssBox(textEl)}white-space:pre-wrap;line-height:1.6;margin-bottom:14px;" dir="${dir}">${safeReport}</div>`
+      : textEl.visible
+        ? `<div data-canvas-element="text" style="${cssBox(textEl)}min-height:8px;margin-bottom:14px;"></div>`
+        : "";
 
   let gridInline = "";
-  if (prefs.showGrid && grid?.columns?.length) {
+  if (gridEl.visible && grid?.columns?.length) {
     const cols = orderedGridColumns(grid.columns, language === "fa" ? "fa" : dir);
     const rows = grid.rows || [];
+    const thBorder =
+      gridEl.borderWidthPx > 0
+        ? `${gridEl.borderWidthPx}px solid #1e3a5f`
+        : "none";
+    const tdBorder =
+      gridEl.borderWidthPx > 0
+        ? `${gridEl.borderWidthPx}px solid #cfe6dd`
+        : "none";
     const headerCells = cols
-      .map((c) => `<th style="${S.th}">${escapeHtml(c)}</th>`)
+      .map(
+        (c) =>
+          `<th style="border:${thBorder};padding:${gridEl.paddingPx}px;text-align:center;font-weight:600;">${escapeHtml(c)}</th>`,
+      )
       .join("");
     const bodyRows = rows
       .map(
@@ -189,16 +195,24 @@ export function buildPdfHtml({
           `<tr>${cols
             .map(
               (c) =>
-                `<td style="${i % 2 === 1 ? S.tdEven : S.td}">${escapeHtml(row?.[c])}</td>`,
+                `<td style="border:${tdBorder};padding:${gridEl.paddingPx}px;text-align:center;${i % 2 === 1 ? "background:#eef7f4;" : ""}">${escapeHtml(row?.[c])}</td>`,
             )
             .join("")}</tr>`,
       )
       .join("");
-    gridInline = `<table style="${S.table}" dir="${dir}"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>`;
+    gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}"><table style="width:100%;border-collapse:collapse;font-family:${gridEl.fontFamily};font-size:${gridEl.fontSizePx}px;color:${gridEl.color};" dir="${dir}"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+  } else if (gridEl.visible) {
+    gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}min-height:8px;"></div>`;
   }
 
+  const footerText = escapeHtml(footerSampleText || labels.pdfFooter || "");
+  const footerInline = footerEl.visible
+    ? `<div data-canvas-element="footer" style="${cssBox(footerEl)}margin-top:14px;border-top:${footerEl.borderWidthPx > 0 ? `${footerEl.borderWidthPx}px solid #1e3a5f` : "1px solid #1e3a5f"};text-align:center;">${footerText}</div>`
+    : "";
+
+  const rootFont = elementStyle(prefs, "text");
   return {
-    html: `<div style="${S.root}">${headerInline}${chartImgInline}${articleInline}${gridInline}</div>`,
+    html: `<div style="font-family:${rootFont.fontFamily};color:#111;background:#fff;padding:16px;box-sizing:border-box;">${headerInline}${chartImgInline}${articleInline}${gridInline}${footerInline}</div>`,
     dir,
     lang,
   };
@@ -225,10 +239,16 @@ export async function exportResultPdf({
   design,
   openWindow = true,
 }) {
-  const prefs = { ...DEFAULT_PDF_DESIGN, ...(design || loadPdfDesign()) };
-  if (showChart === false) prefs.showCharts = false;
-  if (showText === false) prefs.showText = false;
-  if (showGrid === false) prefs.showGrid = false;
+  const prefs = normalizePdfDesign(design || loadPdfDesign());
+  if (showChart === false) {
+    prefs.elements.charts = { ...prefs.elements.charts, visible: false };
+  }
+  if (showText === false) {
+    prefs.elements.text = { ...prefs.elements.text, visible: false };
+  }
+  if (showGrid === false) {
+    prefs.elements.grid = { ...prefs.elements.grid, visible: false };
+  }
 
   const instances = Array.isArray(chartInstances)
     ? chartInstances
@@ -236,7 +256,7 @@ export async function exportResultPdf({
       ? [chartInstance]
       : [];
   let chartImages = Array.isArray(providedImages) ? [...providedImages] : [];
-  if (!chartImages.length && prefs.showCharts) {
+  if (!chartImages.length && elementStyle(prefs, "charts").visible) {
     chartImages = instances.map(chartDataUrlFromInstance).filter(Boolean);
   }
 
@@ -258,6 +278,7 @@ export async function exportResultPdf({
     logoDataUrl,
     companyLogoDataUrl,
     design: prefs,
+    footerSampleText: labels.pdfFooter,
   });
 
   const orientation =
@@ -273,6 +294,8 @@ export async function exportResultPdf({
   element.innerHTML = html;
   document.body.appendChild(element);
 
+  const footerVisible = elementStyle(prefs, "footer").visible;
+
   try {
     await new Promise((r) => requestAnimationFrame(r));
     await new Promise((r) => requestAnimationFrame(r));
@@ -287,7 +310,7 @@ export async function exportResultPdf({
     const A4_W = orientation === "portrait" ? 210 : 297;
     const A4_H = orientation === "portrait" ? 297 : 210;
     const MARGIN = 12;
-    const FOOTER_H = prefs.showFooter ? 10 : 0;
+    const FOOTER_H = footerVisible ? 10 : 0;
     const contentW = A4_W - MARGIN * 2;
     const contentH = A4_H - MARGIN - FOOTER_H - MARGIN;
     const imgW = canvas.width;
@@ -318,14 +341,15 @@ export async function exportResultPdf({
       const sliceDataUrl = sliceCanvas.toDataURL("image/jpeg", 0.95);
       pdf.addImage(sliceDataUrl, "JPEG", MARGIN, MARGIN, contentW, sliceH_mm);
 
-      if (prefs.showFooter) {
+      if (footerVisible) {
+        const footerStyle = elementStyle(prefs, "footer");
         const barY = A4_H - FOOTER_H;
         const textY = barY + 6.5;
         pdf.setDrawColor(30, 58, 95);
         pdf.setLineWidth(0.3);
         pdf.line(MARGIN, barY, A4_W - MARGIN, barY);
         pdf.setTextColor(17, 17, 17);
-        pdf.setFontSize(9);
+        pdf.setFontSize(footerStyle.fontSizePx || 9);
         pdf.text(exportedAt, MARGIN, textY, { align: "left" });
         pdf.text(labels.pdfFooter, A4_W / 2, textY, { align: "center" });
         pdf.text(`${pageNum}/${totalPages}`, A4_W - MARGIN, textY, {

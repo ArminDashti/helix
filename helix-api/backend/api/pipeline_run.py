@@ -39,6 +39,7 @@ VALIDATOR_IDS = frozenset({"validator", "implementation_auditor"})
 GUARDIAN_IDS = frozenset({"guardian", "task_validator"})
 RESEARCHER_IDS = frozenset({"researcher"})
 WEB_SEARCHER_IDS = frozenset({"web-searcher"})
+ORCHESTER_IDS = frozenset({"orchester"})
 RESEARCH_TIERS = ("low", "medium", "high")
 RESEARCH_TIER_ATTEMPTS = 5
 MAX_STEP_LOG_ENTRIES = 30
@@ -691,9 +692,39 @@ def _run_researcher(ctx: dict[str, Any]) -> tuple[str, str]:
             ctx["research_tier_hint"] = saved_hint
 
 
+def _run_orchester(ctx: dict[str, Any]) -> tuple[str, str]:
+    """Single-agent visit: guard → gather/research → build → validate → package."""
+    status, message = _run_agent("guardian", ctx)
+    if status != "done":
+        return status, message
+
+    mode = str(ctx.get("mode") or "")
+    if mode == "research":
+        status, message = _run_agent("researcher", ctx)
+    else:
+        status, message = _run_agent("data-gatherer", ctx)
+        if status != "done":
+            return status, message
+        status, message = _run_agent("validator", ctx)
+    if status != "done":
+        return status, message
+
+    status, message = _run_agent("result-builder", ctx)
+    if status != "done":
+        return status, message
+
+    status, message = _run_agent("validator", ctx)
+    if status != "done":
+        return status, message
+
+    return _run_agent("publisher", ctx)
+
+
 def _run_agent(node_id: str, ctx: dict[str, Any]) -> tuple[str, str]:
     agent_id = resolve_agent_definition_id(node_id)
     language = ctx.get("language") or "en"
+    if agent_id in ORCHESTER_IDS:
+        return _run_orchester(ctx)
     if agent_id in WEB_SEARCHER_IDS:
         request = ctx.get("web_search_request") if isinstance(ctx.get("web_search_request"), dict) else {}
         queries = _normalize_web_search_queries(request.get("queries"))

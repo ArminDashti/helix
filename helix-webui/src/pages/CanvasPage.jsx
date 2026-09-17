@@ -9,6 +9,7 @@ import { buildPdfHtml, exportResultPdf } from "../lib/exportResultPdf.js";
 import {
   DEFAULT_PDF_DESIGN,
   FONT_OPTIONS,
+  PDF_ELEMENT_IDS,
   loadPdfDesign,
   savePdfDesign,
 } from "../lib/pdfDesign.js";
@@ -33,16 +34,16 @@ const SAMPLE_GRID_FA = {
   ],
 };
 
-const TOGGLE_KEYS = [
-  { key: "showHeader", labelKey: "canvas.showHeader" },
-  { key: "showHelixLogo", labelKey: "canvas.showHelixLogo" },
-  { key: "showCompanyLogo", labelKey: "canvas.showCompanyLogo" },
-  { key: "showTitle", labelKey: "canvas.showTitle" },
-  { key: "showCharts", labelKey: "canvas.showCharts" },
-  { key: "showText", labelKey: "canvas.showText" },
-  { key: "showGrid", labelKey: "canvas.showGrid" },
-  { key: "showFooter", labelKey: "canvas.showFooter" },
-];
+const ELEMENT_LABEL_KEYS = {
+  header: "canvas.elementHeader",
+  helixLogo: "canvas.showHelixLogo",
+  companyLogo: "canvas.showCompanyLogo",
+  title: "canvas.showTitle",
+  charts: "canvas.showCharts",
+  text: "canvas.showText",
+  grid: "canvas.showGrid",
+  footer: "canvas.showFooter",
+};
 
 const inputClass =
   "mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss focus:ring-2 focus:ring-moss/30";
@@ -50,6 +51,7 @@ const inputClass =
 export default function CanvasPage() {
   const { t, locale } = useI18n();
   const [design, setDesign] = useState(() => loadPdfDesign());
+  const [selectedElement, setSelectedElement] = useState("header");
   const [previewHtml, setPreviewHtml] = useState("");
   const [saving, setSaving] = useState(false);
   const [logoError, setLogoError] = useState(null);
@@ -70,6 +72,8 @@ export default function CanvasPage() {
   const samplePrompt = t("canvas.samplePrompt");
   const sampleReport = t("canvas.sampleReport");
   const sampleGrid = locale === "fa" ? SAMPLE_GRID_FA : SAMPLE_GRID;
+
+  const activeEl = design.elements?.[selectedElement] || {};
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +132,7 @@ export default function CanvasPage() {
         logoDataUrl,
         companyLogoDataUrl,
         design,
+        footerSampleText: pdfLabels.pdfFooter,
       });
       setPreviewHtml(html);
     })();
@@ -136,11 +141,26 @@ export default function CanvasPage() {
     };
   }, [design, locale, samplePrompt, sampleReport, sampleGrid, pdfLabels]);
 
-  function updatePref(key, value) {
-    setDesign((prev) => {
-      const next = { ...prev, [key]: value };
-      savePdfDesign(next);
-      return next;
+  function persistDesign(next) {
+    const saved = savePdfDesign(next);
+    setDesign(saved);
+  }
+
+  function updateTopLevel(key, value) {
+    persistDesign({ ...design, [key]: value });
+  }
+
+  function updateElementField(field, value) {
+    const id = selectedElement;
+    persistDesign({
+      ...design,
+      elements: {
+        ...design.elements,
+        [id]: {
+          ...(design.elements?.[id] || {}),
+          [field]: value,
+        },
+      },
     });
   }
 
@@ -165,10 +185,19 @@ export default function CanvasPage() {
         setLogoError(t("canvas.logoInvalid"));
         return;
       }
-      updatePref("companyLogoDataUrl", dataUrl);
+      updateTopLevel("companyLogoDataUrl", dataUrl);
     };
     reader.onerror = () => setLogoError(t("canvas.logoInvalid"));
     reader.readAsDataURL(file);
+  }
+
+  function handlePreviewClick(event) {
+    const target = event.target.closest("[data-canvas-element]");
+    if (!target) return;
+    const id = target.getAttribute("data-canvas-element");
+    if (id && PDF_ELEMENT_IDS.includes(id)) {
+      setSelectedElement(id);
+    }
   }
 
   async function handleExportSample() {
@@ -197,40 +226,187 @@ export default function CanvasPage() {
   }
 
   function handleReset() {
-    const next = { ...DEFAULT_PDF_DESIGN };
+    const next = { ...DEFAULT_PDF_DESIGN, elements: { ...DEFAULT_PDF_DESIGN.elements } };
     savePdfDesign(next);
-    setDesign(next);
+    setDesign(loadPdfDesign());
+    setSelectedElement("header");
     setLogoError(null);
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
-      <PageHeader icon={LayoutTemplate} title={t("canvas.title")}>
-        <p className="mt-0.5 text-sm text-muted">{t("canvas.subtitle")}</p>
-      </PageHeader>
+      <PageHeader icon={LayoutTemplate} title={t("canvas.title")} />
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
         <aside className="space-y-3 rounded-2xl border border-line/80 bg-paper/80 p-4">
           <h2 className="text-sm font-semibold text-ink">
             {t("canvas.options")}
           </h2>
-          <ul className="space-y-2">
-            {TOGGLE_KEYS.map((item) => (
-              <li key={item.key}>
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-ink">
-                  <input
-                    type="checkbox"
-                    className="accent-moss"
-                    checked={Boolean(design[item.key])}
-                    onChange={(e) => updatePref(item.key, e.target.checked)}
-                  />
-                  {t(item.labelKey)}
-                </label>
-              </li>
-            ))}
-          </ul>
 
           <div>
+            <label
+              htmlFor="canvas_element"
+              className="block text-sm font-medium text-ink"
+            >
+              {t("canvas.selectElement")}
+            </label>
+            <select
+              id="canvas_element"
+              value={selectedElement}
+              onChange={(e) => setSelectedElement(e.target.value)}
+              className={inputClass}
+            >
+              {PDF_ELEMENT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {t(ELEMENT_LABEL_KEYS[id] || id)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="canvas_visibility"
+              className="block text-sm font-medium text-ink"
+            >
+              {t("canvas.visibility")}
+            </label>
+            <select
+              id="canvas_visibility"
+              value={activeEl.visible === false ? "hide" : "show"}
+              onChange={(e) =>
+                updateElementField("visible", e.target.value === "show")
+              }
+              className={inputClass}
+            >
+              <option value="show">{t("canvas.visible")}</option>
+              <option value="hide">{t("canvas.hidden")}</option>
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="el_font"
+              className="block text-sm font-medium text-ink"
+            >
+              {t("canvas.font")}
+            </label>
+            <select
+              id="el_font"
+              value={activeEl.fontFamily || DEFAULT_PDF_DESIGN.elements.header.fontFamily}
+              onChange={(e) => updateElementField("fontFamily", e.target.value)}
+              className={inputClass}
+            >
+              {FONT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {t(opt.labelKey)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="el_font_size" className="block text-sm font-medium text-ink">
+              {t("canvas.fontSizePx")}
+            </label>
+            <input
+              id="el_font_size"
+              type="number"
+              min={8}
+              max={48}
+              value={activeEl.fontSizePx ?? 14}
+              onChange={(e) =>
+                updateElementField("fontSizePx", Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="el_color" className="block text-sm font-medium text-ink">
+              {t("canvas.color")}
+            </label>
+            <input
+              id="el_color"
+              type="color"
+              value={
+                /^#[0-9a-fA-F]{6}$/.test(activeEl.color || "")
+                  ? activeEl.color
+                  : "#111111"
+              }
+              onChange={(e) => updateElementField("color", e.target.value)}
+              className="mt-1 h-10 w-full cursor-pointer rounded-xl border border-line bg-fog/40"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="el_bg" className="block text-sm font-medium text-ink">
+              {t("canvas.backgroundColor")}
+            </label>
+            <input
+              id="el_bg"
+              type="text"
+              value={activeEl.backgroundColor || "transparent"}
+              onChange={(e) =>
+                updateElementField("backgroundColor", e.target.value)
+              }
+              className={inputClass}
+              spellCheck={false}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="el_border_w" className="block text-sm font-medium text-ink">
+              {t("canvas.borderThickness")}
+            </label>
+            <input
+              id="el_border_w"
+              type="number"
+              min={0}
+              max={8}
+              value={activeEl.borderWidthPx ?? 1}
+              onChange={(e) =>
+                updateElementField("borderWidthPx", Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="el_border_r" className="block text-sm font-medium text-ink">
+              {t("canvas.borderCorner")}
+            </label>
+            <input
+              id="el_border_r"
+              type="number"
+              min={0}
+              max={24}
+              value={activeEl.borderRadiusPx ?? 14}
+              onChange={(e) =>
+                updateElementField("borderRadiusPx", Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="el_padding" className="block text-sm font-medium text-ink">
+              {t("canvas.paddingPx")}
+            </label>
+            <input
+              id="el_padding"
+              type="number"
+              min={0}
+              max={48}
+              value={activeEl.paddingPx ?? 14}
+              onChange={(e) =>
+                updateElementField("paddingPx", Number(e.target.value))
+              }
+              className={inputClass}
+            />
+          </div>
+
+          <div className="border-t border-line/60 pt-3">
             <label
               htmlFor="pdf_orientation"
               className="block text-sm font-medium text-ink"
@@ -240,72 +416,11 @@ export default function CanvasPage() {
             <select
               id="pdf_orientation"
               value={design.orientation || "landscape"}
-              onChange={(e) => updatePref("orientation", e.target.value)}
+              onChange={(e) => updateTopLevel("orientation", e.target.value)}
               className={inputClass}
             >
               <option value="landscape">{t("canvas.landscape")}</option>
               <option value="portrait">{t("canvas.portrait")}</option>
-            </select>
-          </div>
-
-          <div>
-            <label
-              htmlFor="pdf_border_width"
-              className="block text-sm font-medium text-ink"
-            >
-              {t("canvas.borderThickness")}
-            </label>
-            <input
-              id="pdf_border_width"
-              type="number"
-              min={0}
-              max={8}
-              value={design.borderWidthPx ?? 1}
-              onChange={(e) =>
-                updatePref("borderWidthPx", Number(e.target.value))
-              }
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="pdf_border_radius"
-              className="block text-sm font-medium text-ink"
-            >
-              {t("canvas.borderCorner")}
-            </label>
-            <input
-              id="pdf_border_radius"
-              type="number"
-              min={0}
-              max={24}
-              value={design.borderRadiusPx ?? 14}
-              onChange={(e) =>
-                updatePref("borderRadiusPx", Number(e.target.value))
-              }
-              className={inputClass}
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="pdf_font"
-              className="block text-sm font-medium text-ink"
-            >
-              {t("canvas.font")}
-            </label>
-            <select
-              id="pdf_font"
-              value={design.fontFamily || DEFAULT_PDF_DESIGN.fontFamily}
-              onChange={(e) => updatePref("fontFamily", e.target.value)}
-              className={inputClass}
-            >
-              {FONT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {t(opt.labelKey)}
-                </option>
-              ))}
             </select>
           </div>
 
@@ -326,7 +441,7 @@ export default function CanvasPage() {
             {design.companyLogoDataUrl ? (
               <button
                 type="button"
-                onClick={() => updatePref("companyLogoDataUrl", "")}
+                onClick={() => updateTopLevel("companyLogoDataUrl", "")}
                 className="mt-2 text-xs font-medium text-moss hover:underline"
               >
                 {t("canvas.clearLogo")}
@@ -363,6 +478,9 @@ export default function CanvasPage() {
           </h2>
           <div
             className="overflow-auto rounded-xl border border-line bg-white p-2 shadow-sm"
+            onClick={handlePreviewClick}
+            onKeyDown={() => {}}
+            role="presentation"
             dangerouslySetInnerHTML={{ __html: previewHtml }}
           />
         </div>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Ban, Bot, LayoutList, ListChecks, ListTree, Network, Pencil, Plus, Trash2 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Ban, Bot, LayoutList, ListChecks, ListTree, Network, Pencil, Trash2 } from "lucide-react";
 import {
   deleteAgent,
   fetchAgents,
@@ -77,11 +77,14 @@ export default function AgentsPage() {
   }, [location.pathname, location.state, navigate, setStatus, t]);
 
   const rows = useMemo(
-    () => agents.map((agent) => ({ key: agent.id, item: agent })),
+    () =>
+      agents
+        .filter((agent) => agent.id === "orchester")
+        .map((agent) => ({ key: agent.id, item: agent })),
     [agents],
   );
   const pipelineAgents = useMemo(
-    () => agents.filter((agent) => !agent.sub_agent),
+    () => agents.filter((agent) => agent.id === "orchester"),
     [agents],
   );
 
@@ -252,15 +255,6 @@ export default function AgentsPage() {
                 </IconButton>
               ))}
             </div>
-            {view === "list" ? (
-              <Link
-                to="/agents/new"
-                className="inline-flex items-center gap-2 rounded-xl bg-moss px-4 py-2 text-sm font-semibold text-white hover:bg-moss-deep"
-              >
-                <Plus className="size-4 shrink-0" aria-hidden="true" />
-                {t("agents.new")}
-              </Link>
-            ) : null}
           </>
         }
       />

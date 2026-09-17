@@ -118,9 +118,7 @@ export default function DbExplorerPage() {
 
   return (
     <div className="hx-rise flex h-full min-h-0 flex-col gap-3">
-      <PageHeader icon={Database} title={t("dbExplorer.title")}>
-        <p className="text-sm text-muted">{t("dbExplorer.subtitle")}</p>
-      </PageHeader>
+      <PageHeader icon={Database} title={t("dbExplorer.title")} />
 
       {error ? (
         <p className="shrink-0 rounded-xl border border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn">
@@ -132,20 +130,24 @@ export default function DbExplorerPage() {
         onSubmit={handleRun}
         className="filter-section shrink-0 space-y-3 rounded-2xl border border-line/80 bg-paper/80 p-4"
       >
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <div className="block text-sm md:col-span-2 xl:col-span-1">
-            <span className="font-medium text-ink">{t("dbExplorer.table")}</span>
+        <div className="flex flex-wrap items-end gap-3 overflow-x-auto">
+          <label className="block min-w-[8rem] shrink-0 text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.filter")}</span>
             <input
               type="search"
               value={tableFilter}
               onChange={(e) => setTableFilter(e.target.value)}
               placeholder={t("dbExplorer.filterPlaceholder")}
-              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 w-full min-w-[8rem] rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
             />
+          </label>
+
+          <div className="block min-w-[10rem] shrink-0 text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.table")}</span>
             <select
               value={table}
               onChange={(e) => setTable(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 w-full min-w-[10rem] rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
             >
               {tables.length === 0 ? (
                 <option value="">{t("dbExplorer.noTables")}</option>
@@ -173,7 +175,7 @@ export default function DbExplorerPage() {
             </select>
           </div>
 
-          <fieldset className="text-sm">
+          <fieldset className="shrink-0 text-sm">
             <legend className="font-medium text-ink">{t("dbExplorer.rows")}</legend>
             <div className="mt-1 flex flex-wrap gap-2">
               {LIMITS.map((n) => (
@@ -195,7 +197,7 @@ export default function DbExplorerPage() {
             </div>
           </fieldset>
 
-          <fieldset className="text-sm">
+          <fieldset className="shrink-0 text-sm">
             <legend className="font-medium text-ink">{t("dbExplorer.position")}</legend>
             <div className="mt-1 flex gap-2">
               {["top", "tail"].map((pos) => (
@@ -217,40 +219,48 @@ export default function DbExplorerPage() {
             </div>
           </fieldset>
 
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block text-sm">
-              <span className="font-medium text-ink">{t("dbExplorer.orderBy")}</span>
-              <select
-                value={orderBy}
-                onChange={(e) => setOrderBy(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
-              >
-                {columnNames.length === 0 ? (
-                  <option value="">{t("common.noneDash")}</option>
-                ) : (
-                  columnNames.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-            <label className="block text-sm">
-              <span className="font-medium text-ink">{t("dbExplorer.sort")}</span>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
-              >
-                <option value="ASC">{t("dbExplorer.sortAsc")}</option>
-                <option value="DESC">{t("dbExplorer.sortDesc")}</option>
-              </select>
-            </label>
-          </div>
+          <label className="block min-w-[8rem] shrink-0 text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.orderBy")}</span>
+            <select
+              value={orderBy}
+              onChange={(e) => setOrderBy(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+            >
+              {columnNames.length === 0 ? (
+                <option value="">{t("common.noneDash")}</option>
+              ) : (
+                columnNames.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+
+          <label className="block min-w-[6rem] shrink-0 text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.sort")}</span>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+            >
+              <option value="ASC">{t("dbExplorer.sortAsc")}</option>
+              <option value="DESC">{t("dbExplorer.sortDesc")}</option>
+            </select>
+          </label>
+
+          <IconButton
+            type="submit"
+            icon={Play}
+            disabled={!table || running}
+            className="shrink-0 rounded-xl bg-moss px-5 py-2.5 text-sm font-semibold text-white hover:bg-moss-deep disabled:opacity-50"
+          >
+            {running ? t("dbExplorer.running") : t("dbExplorer.run")}
+          </IconButton>
         </div>
 
-        <label className="block text-sm">
+        <label className="block w-full text-sm">
           <span className="font-medium text-ink">{t("dbExplorer.where")}</span>
           <input
             value={where}
@@ -259,15 +269,6 @@ export default function DbExplorerPage() {
             className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 font-mono text-[13px] outline-none focus:border-moss"
           />
         </label>
-
-        <IconButton
-          type="submit"
-          icon={Play}
-          disabled={!table || running}
-          className="rounded-xl bg-moss px-5 py-2.5 text-sm font-semibold text-white hover:bg-moss-deep disabled:opacity-50"
-        >
-          {running ? t("dbExplorer.running") : t("dbExplorer.run")}
-        </IconButton>
       </form>
 
       {result ? (

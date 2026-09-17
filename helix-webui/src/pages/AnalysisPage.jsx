@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Play } from "lucide-react";
+import {
+  AreaChart,
+  BarChart3,
+  ChartColumn,
+  ChartLine,
+  ChartPie,
+  ChartScatter,
+  CircleDot,
+  Play,
+} from "lucide-react";
 import { fetchAgents, streamRun, createResult } from "../api/client.js";
 import ErrorModal from "../components/ErrorModal.jsx";
 import IconButton from "../components/IconButton.jsx";
@@ -12,26 +21,33 @@ import { translateKnownMessage } from "../i18n/apiErrors.js";
 import { readStoredLocale } from "../i18n/applyLocale.js";
 import { translate } from "../i18n/messages.js";
 import { agentCompanyLabel } from "../utils/agentLabel.js";
-import {
-  parseColumns,
-  textDirection,
-  textLang,
-} from "../utils/textDirection.js";
+import { textDirection, textLang } from "../utils/textDirection.js";
 import { sortByLabel } from "../utils/sortOptions.js";
 
 const selectClass =
-  "mt-1.5 w-full min-w-[8.5rem] rounded-xl border border-line bg-paper px-3 py-2.5 text-[15px] text-ink outline-none ring-moss/30 focus:border-moss focus:ring-2";
+  "w-full min-w-[8.5rem] rounded-xl border border-line bg-paper px-3 py-2.5 text-[15px] text-ink outline-none ring-moss/30 focus:border-moss focus:ring-2";
+
+const CHART_TYPE_META = [
+  { value: "bar", icon: BarChart3, labelKey: "analysis.chartBar" },
+  { value: "line", icon: ChartLine, labelKey: "analysis.chartLine" },
+  { value: "area", icon: AreaChart, labelKey: "analysis.chartArea" },
+  { value: "pie", icon: ChartPie, labelKey: "analysis.chartPie" },
+  { value: "donut", icon: CircleDot, labelKey: "analysis.chartDonut" },
+  { value: "scatter", icon: ChartScatter, labelKey: "analysis.chartScatter" },
+  { value: "stacked_bar", icon: ChartColumn, labelKey: "analysis.chartStackedBar" },
+  {
+    value: "horizontal_bar",
+    icon: BarChart3,
+    labelKey: "analysis.chartHorizontalBar",
+  },
+];
 
 function needsType(mode) {
-  return (
-    mode === "research" ||
-    mode === "analytical_report" ||
-    mode === "analytical_report_chart"
-  );
+  return mode === "research";
 }
 
 function needsChart(mode) {
-  return mode === "chart" || mode === "analytical_report_chart";
+  return mode === "chart";
 }
 
 function llmUnavailableMessage(health, t) {
@@ -53,9 +69,6 @@ export default function AnalysisPage() {
   const [mode, setMode] = useState("chart");
   const [reportType, setReportType] = useState("medium");
   const [chartTypesSelected, setChartTypesSelected] = useState(["bar"]);
-  const [columnsRaw, setColumnsRaw] = useState(
-    "Category/Product/OrderQty/LineTotal",
-  );
   const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [running, setRunning] = useState(false);
@@ -71,7 +84,6 @@ export default function AnalysisPage() {
       sortByLabel(
         [
           { value: "chart", label: t("analysis.modeChart") },
-          { value: "grid", label: t("analysis.modeGrid") },
           { value: "research", label: t("analysis.modeResearch") },
         ],
         (item) => item.label,
@@ -92,16 +104,10 @@ export default function AnalysisPage() {
   const chartTypes = useMemo(
     () =>
       sortByLabel(
-        [
-          { value: "bar", label: t("analysis.chartBar") },
-          { value: "line", label: t("analysis.chartLine") },
-          { value: "area", label: t("analysis.chartArea") },
-          { value: "pie", label: t("analysis.chartPie") },
-          { value: "donut", label: t("analysis.chartDonut") },
-          { value: "scatter", label: t("analysis.chartScatter") },
-          { value: "stacked_bar", label: t("analysis.chartStackedBar") },
-          { value: "horizontal_bar", label: t("analysis.chartHorizontalBar") },
-        ],
+        CHART_TYPE_META.map((item) => ({
+          ...item,
+          label: t(item.labelKey),
+        })),
         (item) => item.label,
         locale,
       ),
@@ -156,12 +162,13 @@ export default function AnalysisPage() {
     setModalOpen(true);
     setRunning(true);
 
-    const columns = mode === "grid" ? parseColumns(columnsRaw) : undefined;
     const selectedCharts = needsChart(mode)
       ? chartTypesSelected.slice(0, 4)
       : undefined;
     if (needsChart(mode) && (!selectedCharts || selectedCharts.length === 0)) {
       setError(t("analysis.chartRequired"));
+      setRunning(false);
+      setModalOpen(false);
       return;
     }
     const payload = {
@@ -171,7 +178,6 @@ export default function AnalysisPage() {
       report_type: needsType(mode) ? reportType : undefined,
       chart_type: selectedCharts?.[0],
       chart_types: selectedCharts,
-      columns,
     };
 
     const controller = new AbortController();
@@ -257,8 +263,17 @@ export default function AnalysisPage() {
     setRunError(null);
   }
 
+  function toggleChartType(value) {
+    setChartTypesSelected((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((v) => v !== value);
+      }
+      if (prev.length >= 4) return prev;
+      return [...prev, value];
+    });
+  }
+
   const promptDir = textDirection(prompt);
-  const columnsDir = textDirection(columnsRaw);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -280,8 +295,8 @@ export default function AnalysisPage() {
           placeholder={t("analysis.promptPlaceholder")}
         />
 
-        <div className="flex flex-col gap-3">
-          <div>
+        <div className="flex flex-wrap items-end gap-3 overflow-x-auto">
+          <div className="min-w-[8.5rem] shrink-0">
             <label htmlFor="mode" className="block text-sm font-medium text-ink">
               {t("analysis.mode")}
             </label>
@@ -300,7 +315,7 @@ export default function AnalysisPage() {
           </div>
 
           {needsType(mode) ? (
-            <div>
+            <div className="min-w-[8.5rem] shrink-0">
               <label
                 htmlFor="research_level"
                 className="block text-sm font-medium text-ink"
@@ -323,71 +338,41 @@ export default function AnalysisPage() {
           ) : null}
 
           {needsChart(mode) ? (
-            <div>
+            <div className="min-w-0 shrink-0">
+              <span className="block text-sm font-medium text-ink">
+                {t("analysis.chart")}
+              </span>
               <div
-                className="mt-1.5 flex flex-wrap gap-2"
+                className="mt-1 flex flex-wrap gap-1.5"
                 role="group"
                 aria-label={t("analysis.chart")}
               >
                 {chartTypes.map((item) => {
-                  const checked = chartTypesSelected.includes(item.value);
-                  const atCap =
-                    !checked && chartTypesSelected.length >= 4;
+                  const pressed = chartTypesSelected.includes(item.value);
+                  const atCap = !pressed && chartTypesSelected.length >= 4;
+                  const Icon = item.icon;
                   return (
-                    <label
+                    <button
                       key={item.value}
+                      type="button"
+                      title={item.label}
+                      aria-label={item.label}
+                      aria-pressed={pressed}
+                      disabled={atCap}
+                      onClick={() => toggleChartType(item.value)}
                       className={[
-                        "inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm transition",
-                        checked
+                        "inline-flex size-10 items-center justify-center rounded-xl border transition",
+                        pressed
                           ? "border-moss bg-moss/15 text-ink"
                           : "border-line bg-paper text-muted hover:bg-fog",
-                        atCap ? "opacity-50" : "",
+                        atCap ? "cursor-not-allowed opacity-50" : "",
                       ].join(" ")}
                     >
-                      <input
-                        type="checkbox"
-                        className="accent-moss"
-                        checked={checked}
-                        disabled={atCap}
-                        onChange={() => {
-                          setChartTypesSelected((prev) => {
-                            if (prev.includes(item.value)) {
-                              return prev.filter((v) => v !== item.value);
-                            }
-                            if (prev.length >= 4) return prev;
-                            return [...prev, item.value];
-                          });
-                        }}
-                      />
-                      {item.label}
-                    </label>
+                      <Icon className="size-5" aria-hidden="true" />
+                    </button>
                   );
                 })}
               </div>
-            </div>
-          ) : null}
-
-          {mode === "grid" ? (
-            <div>
-              <label
-                htmlFor="grid_columns"
-                className="block text-sm font-medium text-ink"
-              >
-                {t("analysis.columns")}
-              </label>
-              <input
-                id="grid_columns"
-                type="text"
-                value={columnsRaw}
-                dir={columnsDir}
-                lang={textLang(columnsRaw)}
-                onChange={(e) => setColumnsRaw(e.target.value)}
-                placeholder={t("analysis.columnsPlaceholder")}
-                className="mt-1.5 w-full rounded-xl border border-line bg-paper px-4 py-2.5 text-[15px] text-ink outline-none ring-moss/30 focus:border-moss focus:ring-2"
-              />
-              <p className="mt-1 text-xs text-muted">
-                {t("analysis.columnsHint")}
-              </p>
             </div>
           ) : null}
 
@@ -395,7 +380,7 @@ export default function AnalysisPage() {
             type="submit"
             icon={Play}
             disabled={running}
-            className="w-full rounded-xl bg-moss px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-moss-deep disabled:opacity-60 sm:w-auto"
+            className="shrink-0 rounded-xl bg-moss px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-moss-deep disabled:opacity-60"
           >
             {t("analysis.run")}
           </IconButton>
