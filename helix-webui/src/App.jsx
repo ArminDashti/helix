@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout.jsx";
 import { ApiStatusProvider } from "./context/ApiStatusContext.jsx";
+import { LiveSyncProvider } from "./context/LiveSyncContext.jsx";
 import { I18nProvider } from "./context/I18nContext.jsx";
 import AboutMePage from "./pages/AboutMePage.jsx";
 import AdminPage from "./pages/AdminPage.jsx";
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <BrowserRouter basename={routerBasename}>
       <I18nProvider>
+      <LiveSyncProvider>
       <ApiStatusProvider>
         <Routes>
           <Route element={<Layout />}>
@@ -59,6 +61,7 @@ export default function App() {
           </Route>
         </Routes>
       </ApiStatusProvider>
+      </LiveSyncProvider>
       </I18nProvider>
     </BrowserRouter>
   );

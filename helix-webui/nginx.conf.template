@@ -21,6 +21,9 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 600s;
         proxy_send_timeout 600s;
+        # Live sync: SSE needs no buffering
+        proxy_buffering off;
+        proxy_cache off;
     }
 
     location /helix/assets/ {

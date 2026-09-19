@@ -6,7 +6,6 @@ export const WHEN_OPTIONS = [
   { value: "always", label: "Always (on success)" },
   { value: "on_success", label: "Succeeded" },
   { value: "on_failure", label: "Failed" },
-  { value: "on_retry", label: "Retry" },
   { value: "on_status", label: "Result is" },
 ];
 
@@ -29,7 +28,6 @@ export const THEN_ACTIONS = [
 export const EDGE_KINDS = [
   { value: "if", label: "IF", fields: ["when", "limit"] },
   { value: "forward", label: "Forward to agent", fields: ["target", "limit"] },
-  { value: "back", label: "Back to agent", fields: ["when", "target", "limit"] },
   { value: "result_is", label: "Result is", fields: ["status", "target", "limit"] },
 ];
 
@@ -43,7 +41,6 @@ export function inferEdgeKind(edge) {
   if (raw && EDGE_KINDS.some((k) => k.value === raw)) return raw;
   const role = edge?.role;
   const type = edge?.when?.type || "always";
-  if (role === "loop" || type === "on_retry") return "back";
   if (type === "on_status") return "result_is";
   if (role === "then" || role === "else") return "if";
   return "forward";
@@ -87,7 +84,6 @@ export function collectAgentIds(block, out = []) {
     collectAgentIds(block.then, out);
     collectAgentIds(block.else, out);
   }
-  if (block.type === "loop") collectAgentIds(block.body, out);
   return out;
 }
 
@@ -261,7 +257,7 @@ function spineInstanceIds(children) {
   });
 }
 
-const RETRY_AGENT_IDS = new Set(["data-gatherer", "result-builder", "publisher"]);
+const RETRY_AGENT_IDS = new Set([]); // removed — single orchester, no retry
 
 export function layoutPositions(flow) {
   const positions = {};
@@ -320,51 +316,7 @@ export function compileFlow(flow, positions = {}) {
       limit: DEFAULT_EDGE_LIMIT,
     });
   });
-  for (const nodeId of spine) {
-    const defId = nodeId.includes("__") ? nodeId.split("__")[0] : nodeId;
-    if (RETRY_AGENT_IDS.has(defId)) {
-      edges.push({
-        id: `e_retry_${nodeId}`,
-        source: nodeId,
-        target: nodeId,
-        direction: "back",
-        kind: "back",
-        when: { type: "on_failure" },
-        limit: DEFAULT_EDGE_LIMIT,
-      });
-    }
-  }
-  const validatorNodes = spine.filter(
-    (nid) => (nid.includes("__") ? nid.split("__")[0] : nid) === "validator",
-  );
-  const dataGatherer = spine.find(
-    (nid) => (nid.includes("__") ? nid.split("__")[0] : nid) === "data-gatherer",
-  );
-  const resultBuilder = spine.find(
-    (nid) => (nid.includes("__") ? nid.split("__")[0] : nid) === "result-builder",
-  );
-  if (validatorNodes[0] && dataGatherer) {
-    edges.push({
-      id: `e_val_fail_${validatorNodes[0]}`,
-      source: validatorNodes[0],
-      target: dataGatherer,
-      direction: "back",
-      kind: "result_is",
-      when: { type: "on_status", status: "fail" },
-      limit: DEFAULT_EDGE_LIMIT,
-    });
-  }
-  if (validatorNodes[1] && resultBuilder) {
-    edges.push({
-      id: `e_val_fail_${validatorNodes[1]}`,
-      source: validatorNodes[1],
-      target: resultBuilder,
-      direction: "back",
-      kind: "result_is",
-      when: { type: "on_status", status: "fail" },
-      limit: DEFAULT_EDGE_LIMIT,
-    });
-  }
+  // Single-agent: no retry/back edges. One straight-through pass only.
   return {
     entry: spine[0],
     nodes: applyPositions(nodes, positions),
@@ -400,7 +352,6 @@ export function edgeLabel(edge, t) {
       });
     }
     if (kind === "if") return t("pipeline.edge.if", { cap: capSuffix });
-    if (kind === "back") return t("pipeline.edge.back", { cap: capSuffix });
     return t("pipeline.edge.goTo", { cap: capSuffix });
   }
   if (when.invert) return `IF NOT Result ${when.status || ""}${capSuffix}`;
@@ -408,7 +359,6 @@ export function edgeLabel(edge, t) {
     return `IF Result Equal ${when.status || ""}${capSuffix}`;
   }
   if (kind === "if") return `IF${capSuffix}`;
-  if (kind === "back") return `Back${capSuffix}`;
   return `Go to${capSuffix}`;
 }
 

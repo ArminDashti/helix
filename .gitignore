@@ -15,3 +15,4 @@ helix-webui/node_modules/lucide-react/dist/cjs/lucide-react.js.map
 # === commit-push-to-github large files (auto) ===
 
 # commit-push-to-github: large files (>5MB) auto-ignored
+.token-optimizer/

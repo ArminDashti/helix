@@ -30,7 +30,7 @@ docker build -t helix-api:latest -f dockerfile .
 docker compose up -d
 ```
 
-API listens on port 8000 by default.
+Django app state uses **SQLite** (`HELIX_DJANGO_ENGINE=sqlite`, volume `helix-sqlite-data`). API listens on port 8000 by default.
 
 ## Agent pipeline
 

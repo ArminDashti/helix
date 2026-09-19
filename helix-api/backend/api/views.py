@@ -505,6 +505,50 @@ def admin_openrouter_models(request: HttpRequest) -> JsonResponse:
     return JsonResponse({"models": models})
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def admin_openrouter_chat_test(request: HttpRequest) -> JsonResponse:
+    try:
+        body = _json_body(request)
+    except ValueError as exc:
+        return _error(str(exc))
+    message = str(body.get("message") or body.get("prompt") or "").strip()
+    if not message:
+        return _error("message is required")
+    if len(message) > 8000:
+        return _error("message is too long (max 8000 chars)")
+    model = body.get("model")
+    if model is not None and not isinstance(model, str):
+        return _error("model must be a string")
+    system_prompt = body.get("system_prompt") or body.get("system")
+    if system_prompt is not None and not isinstance(system_prompt, str):
+        return _error("system_prompt must be a string")
+    # Token/base_url validation via complete_test_chat
+    try:
+        from .llm_client import complete_test_chat
+        import time as _t
+
+        started = _t.time()
+        result = complete_test_chat(
+            message,
+            model=str(model).strip() if isinstance(model, str) else None,
+            system_prompt=str(system_prompt).strip() if isinstance(system_prompt, str) and system_prompt.strip() else None,
+        )
+        # persist tester run as info log (optional, not error)
+        return JsonResponse(result)
+    except ValueError as exc:
+        msg = str(exc)
+        # map auth/config to 400, upstream to 502
+        if "is not set" in msg or "Base URL" in msg or "API key" in msg:
+            return _error(msg, status=400)
+        if "timed out" in msg.lower():
+            return _error(msg, status=504)
+        # include elapsed hint when available
+        return _error(msg, status=502)
+    except Exception as exc:  # noqa: BLE001
+        return _error(str(exc), status=502)
+
+
 
 
 @csrf_exempt
@@ -1257,3 +1301,48 @@ def admin_user_detail(request: HttpRequest, user_id: str) -> JsonResponse:
     except ValueError as exc:
         return _error(str(exc))
     return JsonResponse(item)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def state_version(request: HttpRequest) -> JsonResponse:
+    """Lightweight fingerprint for live UI sync — any file/DB change bumps version."""
+    from .state_version import fingerprint_for_wire
+
+    data = fingerprint_for_wire()
+    resp = JsonResponse(data)
+    resp["Cache-Control"] = "no-store"
+    return resp
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def events_stream(request: HttpRequest) -> StreamingHttpResponse:
+    """SSE stream pushing state version every ~1.5s; frontend uses EventSource with polling fallback."""
+    import json as _json
+    import time as _time
+
+    from .state_version import fingerprint_for_wire
+
+    def _event_gen():
+        last_version = None
+        # Send initial hello
+        try:
+            while True:
+                data = fingerprint_for_wire()
+                ver = data.get("version")
+                # Always send heartbeat; dedupe could be done client-side, but we send only on change + heartbeat every 5s
+                payload = _json.dumps(data, ensure_ascii=False)
+                yield f"event: version\ndata: {payload}\n\n"
+                # SSE comment heartbeat
+                yield ": heartbeat\n\n"
+                last_version = ver
+                _time.sleep(1.5)
+        except GeneratorExit:
+            return
+
+    resp = StreamingHttpResponse(_event_gen(), content_type="text/event-stream")
+    resp["Cache-Control"] = "no-cache"
+    resp["X-Accel-Buffering"] = "no"
+    resp["Access-Control-Allow-Origin"] = "*"
+    return resp

@@ -8,17 +8,17 @@ from typing import Any
 from .config_loader import known_agent_ids, load_config, save_config
 from .agents import AGENT_BY_ID, resolve_agent_definition_id, is_sub_agent
 
-WHEN_TYPES = frozenset({"always", "on_success", "on_failure", "on_retry", "on_status"})
-EDGE_ROLES = frozenset({"then", "else", "loop"})
-EDGE_KINDS = frozenset({"if", "forward", "back", "result_is"})
-MAX_STEPS = 512
-DEFAULT_EDGE_LIMIT = 5
-MAX_VISITS_PER_NODE = DEFAULT_EDGE_LIMIT
-FLOW_TYPES = frozenset({"sequence", "agent", "if", "loop", "stages", "stage"})
+WHEN_TYPES = frozenset({"always", "on_success", "on_failure", "on_status"})
+EDGE_ROLES = frozenset({"then", "else"})
+EDGE_KINDS = frozenset({"if", "forward", "result_is"})
+MAX_STEPS = 1
+DEFAULT_EDGE_LIMIT = 1
+MAX_VISITS_PER_NODE = 1
+FLOW_TYPES = frozenset({"stages", "stage"})
 STAGE_ACTIONS = frozenset({"if", "if_not", "proceed"})
 RESULT_OPS = frozenset({"equal", "not_equal"})
 THEN_ACTIONS = frozenset({"proceed", "stop"})
-RETRY_AGENT_IDS = frozenset({"orchester"})
+RETRY_AGENT_IDS = frozenset()  # single try: no self-retry circuit
 
 
 def _graph_node_allowed(node_id: str) -> bool:
@@ -138,8 +138,6 @@ def _infer_kind(entry: dict[str, Any], when: dict[str, Any], role: str | None) -
         if raw not in EDGE_KINDS:
             raise ValueError(f"Invalid edge kind: {raw}")
         return raw
-    if role == "loop" or when.get("type") == "on_retry":
-        return "back"
     if when.get("type") == "on_status":
         return "result_is"
     if role in ("then", "else"):
@@ -162,8 +160,6 @@ def _default_edge_id(
 ) -> str:
     if kind == "forward":
         return f"e_fwd_{source}_{target}"
-    if kind == "back":
-        return f"e_back_{source}_{target}"
     if kind == "result_is":
         return f"e_result_{source}_{target}"
     branch = role if role in ("then", "else") else str(index)
@@ -235,14 +231,18 @@ def normalize_pipeline_graph(payload: dict[str, Any] | None) -> dict[str, Any]:
         if source not in node_ids or target not in node_ids:
             raise ValueError(f"Edge endpoints must be graph nodes: {source} → {target}")
         when = _normalize_when(entry.get("when"))
+        if when.get("type") == "on_retry":
+            raise ValueError("Loop edges (on_retry/back) are no longer supported — single orchester only")
         role = _optional_role(entry)
+        if role == "loop":
+            raise ValueError("Loop role is no longer supported — single orchester only")
         kind = _infer_kind(entry, when, role)
+        if kind == "back":
+            raise ValueError("Back edges are no longer supported — single orchester only")
         limit = _optional_limit(entry)
         if limit is None:
             limit = DEFAULT_EDGE_LIMIT
-        direction = str(entry.get("direction") or "").strip().lower()
-        if direction not in ("forward", "back"):
-            direction = "back" if kind == "back" else "forward"
+        direction = "forward"
         edge_id = str(entry.get("id") or "").strip()
         if not edge_id:
             edge_id = _default_edge_id(kind, source, target, i, role)
@@ -281,18 +281,14 @@ def _first_agent_id(block: dict[str, Any] | None) -> str | None:
     if not block or not isinstance(block, dict):
         return None
     btype = block.get("type")
-    if btype == "agent":
-        return str(block.get("id") or "") or None
-    if btype == "sequence":
+    if btype == "stage":
+        return str(block.get("agent_id") or "") or None
+    if btype == "stages":
         for child in block.get("children") or []:
             found = _first_agent_id(child)
             if found:
                 return found
         return None
-    if btype == "loop":
-        return _first_agent_id(block.get("body"))
-    if btype == "if":
-        return _first_agent_id(block.get("then")) or _first_agent_id(block.get("else"))
     return None
 
 
@@ -300,11 +296,6 @@ def _collect_agent_ids(block: dict[str, Any] | None, out: list[str]) -> None:
     if not block or not isinstance(block, dict):
         return
     btype = block.get("type")
-    if btype == "agent":
-        aid = str(block.get("id") or "").strip()
-        if aid:
-            out.append(aid)
-        return
     if btype == "stage":
         aid = str(block.get("agent_id") or "").strip()
         nxt = str(block.get("next_agent_id") or "").strip()
@@ -317,16 +308,6 @@ def _collect_agent_ids(block: dict[str, Any] | None, out: list[str]) -> None:
         for child in block.get("children") or []:
             _collect_agent_ids(child, out)
         return
-    if btype == "sequence":
-        for child in block.get("children") or []:
-            _collect_agent_ids(child, out)
-        return
-    if btype == "if":
-        _collect_agent_ids(block.get("then"), out)
-        _collect_agent_ids(block.get("else"), out)
-        return
-    if btype == "loop":
-        _collect_agent_ids(block.get("body"), out)
 
 
 def _normalize_stage(raw: Any, index: int) -> dict[str, Any]:
@@ -477,59 +458,7 @@ def _compile_stages(
                 "limit": DEFAULT_EDGE_LIMIT,
             }
         )
-    # Self-retry on producer errors
-    for node_id in spine:
-        def_id = resolve_agent_definition_id(node_id)
-        if def_id in RETRY_AGENT_IDS:
-            edges.append(
-                {
-                    "id": f"e_retry_{node_id}",
-                    "source": node_id,
-                    "target": node_id,
-                    "direction": "back",
-                    "kind": "back",
-                    "when": {"type": "on_failure"},
-                    "limit": DEFAULT_EDGE_LIMIT,
-                }
-            )
-    # Validator fail-back edges
-    validator_instances = [nid for nid in spine if resolve_agent_definition_id(nid) == "validator"]
-    gatherer_node = next(
-        (n for n in spine if resolve_agent_definition_id(n) == "data-gatherer"),
-        None,
-    )
-    builder_node = next(
-        (n for n in spine if resolve_agent_definition_id(n) == "result-builder"),
-        None,
-    )
-    if validator_instances:
-        first_fail_target = gatherer_node or builder_node or "data-gatherer"
-        edges.append(
-            {
-                "id": f"e_val_fail_{validator_instances[0]}",
-                "source": validator_instances[0],
-                "target": first_fail_target,
-                "direction": "back",
-                "kind": "result_is",
-                "when": {"type": "on_status", "status": "fail"},
-                "limit": DEFAULT_EDGE_LIMIT,
-            }
-        )
-    if len(validator_instances) > 1:
-        edges.append(
-            {
-                "id": f"e_val_fail_{validator_instances[1]}",
-                "source": validator_instances[1],
-                "target": next(
-                    (n for n in spine if resolve_agent_definition_id(n) == "result-builder"),
-                    "result-builder",
-                ),
-                "direction": "back",
-                "kind": "result_is",
-                "when": {"type": "on_status", "status": "fail"},
-                "limit": DEFAULT_EDGE_LIMIT,
-            }
-        )
+    # Single-agent: no retry/back edges. One straight-through pass only.
     return {"entry": spine[0], "nodes": nodes, "edges": edges}
 
 
@@ -545,88 +474,22 @@ def normalize_pipeline_flow(payload: dict[str, Any] | None) -> dict[str, Any]:
     btype = str(payload.get("type") or "").strip().lower()
     if btype == "stages":
         return _normalize_stages(payload)
-    if btype == "sequence":
-        converted, err = _sequence_to_stages(payload)
-        if err:
-            raise ValueError(err)
-        return converted
-    block = _normalize_block(payload, ids_seen=set(), counter={"if": 0, "loop": 0})
-    if block.get("type") == "stages":
-        return block
-    converted, err = _sequence_to_stages(
-        block if block.get("type") == "sequence" else {"type": "sequence", "children": [block]}
-    )
-    if err:
-        raise ValueError(err)
-    return converted
+    if btype == "stage":
+        return _normalize_stages({"type": "stages", "children": [payload]})
+    raise ValueError("pipeline_flow must be stages (single orchester only) — loop/sequence/if are removed")
 
 
-def _normalize_block(raw: Any, ids_seen: set[str], counter: dict[str, int]) -> dict[str, Any]:
+def _normalize_block(raw: Any, ids_seen: set[str], counter: dict[str, int]) -> dict[str, Any]:  # deprecated — single orchester only
     if not isinstance(raw, dict):
         raise ValueError("Flow block must be an object")
     btype = str(raw.get("type") or "").strip().lower()
     if btype not in FLOW_TYPES:
-        raise ValueError(f"Invalid flow type: {btype or '(empty)'}")
+        raise ValueError(f"Invalid flow type: {btype or '(empty)'} — only stages/stage are supported")
     if btype == "stages":
         return _normalize_stages(raw)
     if btype == "stage":
         return {"type": "stages", "children": [_normalize_stage(raw, 0)]}
-    if btype == "agent":
-        agent_id = str(raw.get("id") or "").strip()
-        if not agent_id:
-            raise ValueError("Agent block needs id")
-        out: dict[str, Any] = {"type": "agent", "id": agent_id}
-        forward_limit = _optional_limit(raw)
-        if forward_limit is not None:
-            out["forward_limit"] = forward_limit
-        return out
-    if btype == "sequence":
-        children_raw = raw.get("children")
-        if not isinstance(children_raw, list):
-            children_raw = []
-        children = [_normalize_block(child, ids_seen, counter) for child in children_raw]
-        return {"type": "sequence", "children": children}
-    if btype == "if":
-        counter["if"] += 1
-        block_id = str(raw.get("id") or f"if_{counter['if']}").strip()
-        then_block = _normalize_block(raw.get("then") or _empty_sequence(), ids_seen, counter)
-        else_block = _normalize_block(raw.get("else") or _empty_sequence(), ids_seen, counter)
-        if then_block.get("type") != "sequence":
-            then_block = {"type": "sequence", "children": [then_block]}
-        if else_block.get("type") != "sequence":
-            else_block = {"type": "sequence", "children": [else_block]}
-        then_n = _agent_count(then_block)
-        else_n = _agent_count(else_block)
-        if then_n == 0 and else_n > 0:
-            raise ValueError("If / Else needs a Then branch when Else is filled")
-        limit = _optional_limit(raw)
-        if_block: dict[str, Any] = {
-            "type": "if",
-            "id": block_id,
-            "when": _normalize_when(raw.get("when")),
-            "then": then_block,
-            "else": else_block,
-        }
-        if limit is not None:
-            if_block["limit"] = limit
-        return if_block
-    counter["loop"] += 1
-    block_id = str(raw.get("id") or f"loop_{counter['loop']}").strip()
-    body = _normalize_block(raw.get("body") or _empty_sequence(), ids_seen, counter)
-    if body.get("type") != "sequence":
-        body = {"type": "sequence", "children": [body]}
-    if _agent_count(body) == 0:
-        raise ValueError("Loop needs at least one agent in its body")
-    limit = _optional_limit(raw)
-    if limit is None:
-        limit = DEFAULT_EDGE_LIMIT
-    return {
-        "type": "loop",
-        "id": block_id,
-        "when": _normalize_when(raw.get("when") or {"type": "on_retry"}),
-        "limit": limit,
-        "body": body,
-    }
+    raise ValueError(f"Flow type {btype} is no longer supported — single orchester only")
 
 
 def compile_pipeline_flow(
@@ -634,208 +497,11 @@ def compile_pipeline_flow(
     positions: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, Any]:
     flow = normalize_pipeline_flow(flow)
-    if flow.get("type") == "stages":
-        return _compile_stages(flow, positions or {})
-    compiler = _FlowCompiler(positions or {})
-    exits = compiler.compile_seq(flow, incoming=[])
-    if not compiler.nodes:
-        raise ValueError("pipeline_flow must include at least one agent")
-    entry = _first_agent_id(flow) or compiler.nodes[0]["id"]
-    _ = exits
-    return {"entry": entry, "nodes": compiler.nodes, "edges": compiler.edges}
+    return _compile_stages(flow, positions or {})
 
 
-class _FlowCompiler:
-    def __init__(self, positions: dict[str, dict[str, float]]) -> None:
-        self.positions = positions
-        self.nodes: list[dict[str, Any]] = []
-        self.edges: list[dict[str, Any]] = []
-        self.seen: set[str] = set()
-        self.y = 0.0
-        self.edge_ids: set[str] = set()
-
-    def add_agent(self, agent_id: str, depth: int) -> None:
-        if agent_id in self.seen:
-            raise ValueError(f"Duplicate node id: {agent_id}")
-        self.seen.add(agent_id)
-        pos = self.positions.get(agent_id)
-        if not pos:
-            pos = {"x": float(depth * 48), "y": self.y}
-        self.y = max(self.y, pos["y"] + 100)
-        self.nodes.append({"id": agent_id, "position": {"x": pos["x"], "y": pos["y"]}})
-
-    def add_edge(
-        self,
-        source: str,
-        target: str,
-        when: dict[str, Any],
-        role: str | None = None,
-        limit: int | None = None,
-        kind: str | None = None,
-        edge_id: str | None = None,
-    ) -> None:
-        when = when or {"type": "always"}
-        kind = kind or _infer_kind({"kind": kind, "role": role}, when, role)
-        cap = int(limit) if limit is not None else DEFAULT_EDGE_LIMIT
-        if cap < 1:
-            cap = DEFAULT_EDGE_LIMIT
-        eid = (edge_id or "").strip() or _default_edge_id(kind, source, target, len(self.edges), role)
-        if eid in self.edge_ids:
-            eid = f"{eid}_{len(self.edges)}"
-        self.edge_ids.add(eid)
-        item: dict[str, Any] = {
-            "id": eid,
-            "source": source,
-            "target": target,
-            "direction": "back" if kind == "back" else "forward",
-            "kind": kind,
-            "when": when,
-            "limit": cap,
-        }
-        if role:
-            item["role"] = role
-        self.edges.append(item)
-
-    def connect_incoming(
-        self,
-        incoming: list[dict[str, Any]],
-        target: str,
-        depth: int,
-    ) -> None:
-        _ = depth
-        for item in incoming:
-            role = item.get("role")
-            when = item.get("when") or {"type": "always"}
-            kind = item.get("kind") or _infer_kind(item, when, role)
-            block_id = item.get("block_id")
-            edge_id = item.get("id")
-            if not edge_id:
-                if kind == "forward":
-                    edge_id = f"e_fwd_{item['source']}_{target}"
-                elif kind == "back":
-                    edge_id = f"e_back_{block_id or item['source']}"
-                elif kind == "result_is":
-                    edge_id = (
-                        f"e_result_{block_id}_{role}"
-                        if block_id
-                        else f"e_result_{item['source']}_{target}"
-                    )
-                elif kind == "if" and block_id and role in ("then", "else"):
-                    edge_id = f"e_if_{block_id}_{role}"
-                else:
-                    edge_id = _default_edge_id(kind, item["source"], target, len(self.edges), role)
-            self.add_edge(
-                item["source"],
-                target,
-                when,
-                role=role,
-                limit=item.get("limit"),
-                kind=kind,
-                edge_id=edge_id,
-            )
-
-    def compile_seq(
-        self,
-        seq: dict[str, Any],
-        incoming: list[dict[str, Any]],
-        depth: int = 0,
-    ) -> list[dict[str, Any]]:
-        exits = incoming
-        children = seq.get("children") or []
-        for child in children:
-            ctype = child.get("type")
-            if ctype == "agent":
-                self.add_agent(child["id"], depth)
-                self.connect_incoming(exits, child["id"], depth)
-                fwd_limit = child.get("forward_limit")
-                if fwd_limit is None:
-                    fwd_limit = DEFAULT_EDGE_LIMIT
-                exits = [
-                    {
-                        "source": child["id"],
-                        "when": {"type": "always"},
-                        "kind": "forward",
-                        "limit": int(fwd_limit),
-                    }
-                ]
-            elif ctype == "if":
-                if not exits:
-                    raise ValueError("If / Else needs an agent before it")
-                then_n = _agent_count(child.get("then"))
-                else_n = _agent_count(child.get("else"))
-                if then_n == 0 and else_n == 0:
-                    continue
-                if_when = child.get("when") or {"type": "always"}
-                if_limit = child.get("limit")
-                if if_limit is None:
-                    if_limit = DEFAULT_EDGE_LIMIT
-                then_kind = _kind_for_if(if_when, "then")
-                then_in = [
-                    {
-                        "source": item["source"],
-                        "when": if_when,
-                        "role": "then",
-                        "kind": then_kind,
-                        "limit": int(if_limit),
-                        "block_id": child.get("id"),
-                        "id": (
-                            f"e_result_{child.get('id')}_then"
-                            if then_kind == "result_is"
-                            else f"e_if_{child.get('id')}_then"
-                        ),
-                    }
-                    for item in exits
-                ]
-                else_in = [
-                    {
-                        "source": item["source"],
-                        "when": {"type": "always"},
-                        "role": "else",
-                        "kind": "if",
-                        "limit": int(if_limit),
-                        "block_id": child.get("id"),
-                        "id": f"e_if_{child.get('id')}_else",
-                    }
-                    for item in exits
-                ]
-                then_exits = self.compile_seq(child.get("then") or _empty_sequence(), then_in, depth + 1)
-                else_exits = (
-                    self.compile_seq(child.get("else") or _empty_sequence(), else_in, depth + 1)
-                    if else_n
-                    else []
-                )
-                exits = then_exits + else_exits
-            elif ctype == "loop":
-                body = child.get("body") or _empty_sequence()
-                first = _first_agent_id(body)
-                if not first:
-                    raise ValueError("Loop needs at least one agent in its body")
-                body_exits = self.compile_seq(body, exits, depth + 1)
-                last_ids = []
-                for item in body_exits:
-                    src = item.get("source")
-                    if src and src not in last_ids:
-                        last_ids.append(src)
-                loop_limit = child.get("limit")
-                if loop_limit is None:
-                    loop_limit = child.get("max_visits") or DEFAULT_EDGE_LIMIT
-                for last in last_ids:
-                    back_id = (
-                        f"e_back_{child.get('id')}"
-                        if len(last_ids) == 1
-                        else f"e_back_{child.get('id')}_{last}"
-                    )
-                    self.add_edge(
-                        last,
-                        first,
-                        child.get("when") or {"type": "on_retry"},
-                        role="loop",
-                        limit=int(loop_limit),
-                        kind="back",
-                        edge_id=back_id,
-                    )
-                exits = body_exits
-        return exits
+class _FlowCompiler:  # removed — single orchester has no loop/sequence compilation
+    pass
 
 
 def _when_key(when: dict[str, Any] | None) -> tuple[str, str]:
@@ -950,31 +616,13 @@ def _infer_from_spine(graph: dict[str, Any]) -> dict[str, Any]:
         for edge in outgoing.get(source) or []:
             if edge["id"] in used_edges:
                 continue
-            role = edge.get("role")
-            kind = edge.get("kind")
-            wtype = (edge.get("when") or {}).get("type")
-            if kind == "back" or role == "loop" or wtype == "on_retry":
-                continue
             found.append(edge)
         return found
 
-    def take_loops(source: str) -> list[dict[str, Any]]:
-        found = []
-        for edge in outgoing.get(source) or []:
-            if edge["id"] in used_edges:
-                continue
-            role = edge.get("role")
-            kind = edge.get("kind")
-            wtype = (edge.get("when") or {}).get("type")
-            if kind == "back" or role == "loop" or wtype == "on_retry":
-                found.append(edge)
-        return found
-
-    loop_counter = 0
     if_counter = 0
 
     def parse_until(start: str | None, stops: set[str], depth: int = 0) -> tuple[list[dict[str, Any]], str | None]:
-        nonlocal loop_counter, if_counter
+        nonlocal if_counter
         children: list[dict[str, Any]] = []
         current = start
         seen_local: set[str] = set()
@@ -983,7 +631,6 @@ def _infer_from_spine(graph: dict[str, Any]) -> dict[str, Any]:
                 raise ValueError("Arrange needs a single Then/Else per If.")
             seen_local.add(current)
             children.append({"type": "agent", "id": current})
-            loops = take_loops(current)
             forwards = take_forwards(current)
             then_edges = [
                 e for e in forwards if e.get("role") == "then" or e.get("kind") in ("if", "result_is")
@@ -1002,33 +649,6 @@ def _infer_from_spine(graph: dict[str, Any]) -> dict[str, Any]:
                 and e not in else_edges
                 and e not in fail_edges
             ]
-
-            if loops and len(loops) > 1:
-                raise ValueError("Arrange needs a single Then/Else per If.")
-            if loops:
-                back = loops[0]
-                used_edges.add(back["id"])
-                target = back["target"]
-                if target not in [c.get("id") for c in children if c.get("type") == "agent"]:
-                    raise ValueError("Arrange needs a single Then/Else per If.")
-                # Wrap from target agent through current as a loop.
-                start_idx = next(
-                    i
-                    for i, c in enumerate(children)
-                    if c.get("type") == "agent" and c.get("id") == target
-                )
-                body_children = children[start_idx:]
-                children = children[:start_idx]
-                loop_counter += 1
-                children.append(
-                    {
-                        "type": "loop",
-                        "id": f"loop_{loop_counter}",
-                        "when": deepcopy(back.get("when") or {"type": "on_retry"}),
-                        "limit": edge_limit(back),
-                        "body": {"type": "sequence", "children": body_children},
-                    }
-                )
 
             branch_then = then_edges or fail_edges
             branch_else = else_edges
@@ -1123,11 +743,6 @@ def _find_join(
                 continue
             seen.add(node)
             for edge in outgoing.get(node) or []:
-                role = edge.get("role")
-                kind = edge.get("kind")
-                wtype = (edge.get("when") or {}).get("type")
-                if kind == "back" or role == "loop" or wtype == "on_retry":
-                    continue
                 stack.append(edge["target"])
         return seen
 
@@ -1322,8 +937,6 @@ def edge_matches(when: dict[str, Any], status: str) -> bool:
         return status in ("done", "success", "pass")
     if wtype == "on_failure":
         return status in ("failed", "failure", "error", "fail")
-    if wtype == "on_retry":
-        return status == "retry"
     if wtype == "on_status":
         matched = status == when.get("status")
         if when.get("invert"):
@@ -1382,13 +995,8 @@ def next_targets(
 
 
 def visit_cap_for(graph: dict[str, Any], node_id: str) -> int:
-    caps = [
-        edge_limit(edge)
-        for edge in graph.get("edges") or []
-        if (edge.get("source") == node_id or edge.get("target") == node_id)
-        and (edge.get("kind") == "back" or edge.get("role") == "loop")
-    ]
-    return max(caps) if caps else DEFAULT_EDGE_LIMIT
+    # Single-agent: no loop caps — one pass only.
+    return DEFAULT_EDGE_LIMIT
 
 
 def agent_display_name(agent_id: str) -> str:

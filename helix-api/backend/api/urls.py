@@ -35,6 +35,11 @@ urlpatterns = [
         views.admin_openrouter_models,
         name="admin-openrouter-models",
     ),
+    path(
+        "admin/openrouter/chat-test/",
+        views.admin_openrouter_chat_test,
+        name="admin-openrouter-chat-test",
+    ),
     path("admin/pipeline-graph/", views.admin_pipeline_graph, name="admin-pipeline-graph"),
     path("admin/users/", views.admin_users, name="admin-users"),
     path("admin/users/<str:user_id>/", views.admin_user_detail, name="admin-user-detail"),
@@ -46,4 +51,6 @@ urlpatterns = [
     ),
     path("runs/stream", views.runs_stream, name="runs-stream"),
     path("chat", views.chat, name="chat"),
+    path("state-version/", views.state_version, name="state-version"),
+    path("events/stream", views.events_stream, name="events-stream"),
 ]

@@ -132,6 +132,8 @@ _default_cors = [
     "http://localhost:5177",
     "http://127.0.0.1:5643",
     "http://localhost:5643",
+    "http://helix.local",
+    "http://pc-armin",
 ]
 _extra_cors = [
     origin.strip()

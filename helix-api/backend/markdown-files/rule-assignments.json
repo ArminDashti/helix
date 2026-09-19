@@ -1,27 +1,27 @@
 {
   "guard-prompt": [
-    "guardian"
+    "orchester"
   ],
   "warehouse-sql": [
-    "data-gatherer"
+    "orchester"
   ],
   "conduct-research": [
-    "researcher"
+    "orchester"
   ],
   "synthesize-brief": [
-    "researcher"
+    "orchester"
   ],
   "match-goal": [
-    "validator"
+    "orchester"
   ],
   "build-result": [
-    "result-builder"
+    "orchester"
   ],
   "package-payload": [
-    "publisher"
+    "orchester"
   ],
   "web-search-only": [
-    "web-searcher"
+    "orchester"
   ],
   "core-behavior": [
     "orchester"

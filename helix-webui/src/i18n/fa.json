@@ -17,6 +17,7 @@
     "name": "نام",
     "none": "هیچ",
     "noneDash": "—",
+    "actions": "اقدامات",
     "failedToLoad": "بارگذاری ناموفق بود",
     "saveFailed": "ذخیره ناموفق بود",
     "createFailed": "ایجاد ناموفق بود",
@@ -204,7 +205,12 @@
     "workingAgent": "{{name}} مشغول کار است…",
     "fallbackUser": "درخواست",
     "fallbackSystem": "سامانه",
-    "fallbackAgent": "عامل"
+    "fallbackAgent": "عامل",
+    "running": "در حال اجرا",
+    "failed": "ناموفق",
+    "done": "انجام شد",
+    "finished": "تمام شد — نتیجه ذخیره می‌شود.",
+    "errorHint": "جزئیات خطا را ببینید"
   },
   "results": {
     "title": "نتایج",
@@ -360,7 +366,8 @@
     "exportSample": "خروجی PDF نمونه",
     "reset": "بازگردانی پیش‌فرض",
     "samplePrompt": "درآمد بر اساس منطقه (نمونه)",
-    "sampleReport": "شرق با ۵۱۰ در صدر و غرب با ۲۸۰ عقب‌تر است. اولویت: بهبود غرب و حفظ ظرفیت شرق."
+    "sampleReport": "شرق با ۵۱۰ در صدر و غرب با ۲۸۰ عقب‌تر است. اولویت: بهبود غرب و حفظ ظرفیت شرق.",
+    "footerText": "متن پاورقی"
   },
   "reportDesign": {
     "title": "کانواس",
@@ -429,6 +436,9 @@
     "apiOpenaiCompatible": "سازگار با OpenAI",
     "baseUrl": "نشانی پایه",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "workspace": "مسیر workspace",
+    "workspacePlaceholder": "C:/path/to/project",
+    "workspaceHint": "برای برخی پروکسی‌های سازگار با OpenAI مربوط به Cursor در chat/completions لازم است. برای OpenRouter یا api.openai.com خالی بگذارید.",
     "apiKey": "کلید API",
     "apiKeySavedPlaceholder": "روی میزبان API ذخیره شده",
     "apiKeyPastePlaceholder": "کلید API را بچسبانید",
@@ -441,6 +451,13 @@
     "llmSaved": "تنظیمات مدل زبانی در helix.config.yaml ذخیره شد.",
     "modelsSearch": "جستجوی مدل‌ها…",
     "modelsSearchOpenRouter": "جستجوی مدل‌های OpenRouter…",
+    "llmTesterTitle": "آزمون مدل — اینجا گفت‌وگو کنید",
+    "llmTesterHint": "پیامی به مدل پیکربندی‌شده بفرستید تا کلید، نشانی و مدل را بیازمایید. چیزی ذخیره نمی‌شود.",
+    "llmTesterEmpty": "هنوز پیامی نیست. امتحان کنید: «سلام، چه مدلی هستی؟»",
+    "llmTesterPlaceholder": "پیامی برای آزمون مدل بنویسید…",
+    "llmTesterSend": "ارسال",
+    "llmTesterSending": "در حال ارسال…",
+    "llmTesterClear": "پاک کردن گفت‌وگو",
     "dbEngine": "موتور",
     "engineSqlite": "AdventureWorks",
     "enginePostgresql": "PostgreSQL",

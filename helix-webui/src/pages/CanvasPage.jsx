@@ -5,7 +5,11 @@ import IconButton from "../components/IconButton.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { fetchBranding } from "../api/client.js";
 import { assetUrl } from "../utils/assetUrl.js";
-import { buildPdfHtml, exportResultPdf } from "../lib/exportResultPdf.js";
+import {
+  buildPdfHtml,
+  exportResultPdf,
+  renderSampleChartDataUrl,
+} from "../lib/exportResultPdf.js";
 import {
   DEFAULT_PDF_DESIGN,
   FONT_OPTIONS,
@@ -72,6 +76,7 @@ export default function CanvasPage() {
   const samplePrompt = t("canvas.samplePrompt");
   const sampleReport = t("canvas.sampleReport");
   const sampleGrid = locale === "fa" ? SAMPLE_GRID_FA : SAMPLE_GRID;
+  const footerFallback = pdfLabels.pdfFooter;
 
   const activeEl = design.elements?.[selectedElement] || {};
 
@@ -122,24 +127,36 @@ export default function CanvasPage() {
           .catch(() => "");
       }
       if (cancelled) return;
+      const sampleChart = renderSampleChartDataUrl(
+        locale === "fa" ? "fa" : "en",
+      );
       const { html } = buildPdfHtml({
         prompt: samplePrompt,
         textReport: sampleReport,
         grid: sampleGrid,
-        chartImages: [],
+        chartImages: sampleChart ? [sampleChart] : [],
         language: locale === "fa" ? "fa" : "en",
         labels: pdfLabels,
         logoDataUrl,
         companyLogoDataUrl,
         design,
-        footerSampleText: pdfLabels.pdfFooter,
+        footerSampleText:
+          (design.footerText || "").trim() || footerFallback,
       });
       setPreviewHtml(html);
     })();
     return () => {
       cancelled = true;
     };
-  }, [design, locale, samplePrompt, sampleReport, sampleGrid, pdfLabels]);
+  }, [
+    design,
+    locale,
+    samplePrompt,
+    sampleReport,
+    sampleGrid,
+    pdfLabels,
+    footerFallback,
+  ]);
 
   function persistDesign(next) {
     const saved = savePdfDesign(next);
@@ -203,14 +220,14 @@ export default function CanvasPage() {
   async function handleExportSample() {
     setSaving(true);
     try {
+      const sampleChart = renderSampleChartDataUrl(
+        locale === "fa" ? "fa" : "en",
+      );
       await exportResultPdf({
         prompt: samplePrompt,
         textReport: sampleReport,
         grid: sampleGrid,
-        chartImages: [],
-        showChart: false,
-        showText: true,
-        showGrid: true,
+        chartImages: sampleChart ? [sampleChart] : [],
         language: locale === "fa" ? "fa" : "en",
         labels: pdfLabels,
         logoUrl: assetUrl("helix-logo.png"),
@@ -226,7 +243,10 @@ export default function CanvasPage() {
   }
 
   function handleReset() {
-    const next = { ...DEFAULT_PDF_DESIGN, elements: { ...DEFAULT_PDF_DESIGN.elements } };
+    const next = {
+      ...DEFAULT_PDF_DESIGN,
+      elements: { ...DEFAULT_PDF_DESIGN.elements },
+    };
     savePdfDesign(next);
     setDesign(loadPdfDesign());
     setSelectedElement("header");
@@ -234,11 +254,14 @@ export default function CanvasPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
       <PageHeader icon={LayoutTemplate} title={t("canvas.title")} />
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(16rem,22rem)_1fr]">
-        <aside className="space-y-3 rounded-2xl border border-line/80 bg-paper/80 p-4">
+      <div className="grid min-h-0 flex-1 gap-4 overflow-hidden lg:grid-cols-[minmax(16rem,22rem)_1fr]">
+        <aside
+          className="h-full min-h-0 space-y-3 overflow-y-auto overscroll-contain rounded-2xl border border-line/80 bg-paper/80 p-4"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <h2 className="text-sm font-semibold text-ink">
             {t("canvas.options")}
           </h2>
@@ -283,6 +306,25 @@ export default function CanvasPage() {
               <option value="hide">{t("canvas.hidden")}</option>
             </select>
           </div>
+
+          {selectedElement === "footer" ? (
+            <div>
+              <label
+                htmlFor="canvas_footer_text"
+                className="block text-sm font-medium text-ink"
+              >
+                {t("canvas.footerText")}
+              </label>
+              <textarea
+                id="canvas_footer_text"
+                rows={3}
+                value={design.footerText ?? ""}
+                placeholder={footerFallback}
+                onChange={(e) => updateTopLevel("footerText", e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          ) : null}
 
           <div>
             <label

@@ -19,6 +19,7 @@ import useFlash from "../lib/useFlash.js";
 import StackedNames from "../components/StackedNames.jsx";
 import { sortByLabel } from "../utils/sortOptions.js";
 import { agentCompanyLabel } from "../utils/agentLabel.js";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 
 function namesForAgent(agentId, items, locale) {
   return sortByLabel(
@@ -52,6 +53,15 @@ export default function AgentsPage() {
     setRules(r || []);
     setSkills(s || []);
   }
+
+  useLiveSync(["agents", "rules", "skills"], () => reload().catch(() => {}));
+  useLiveSync("pipeline_graph", () => reload().catch(() => {}));
+  useEffect(() => {
+    function onFocusVis() { if (document.visibilityState !== "hidden") reload().catch(() => {}); }
+    window.addEventListener("focus", onFocusVis);
+    document.addEventListener("visibilitychange", onFocusVis);
+    return () => { window.removeEventListener("focus", onFocusVis); document.removeEventListener("visibilitychange", onFocusVis); };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -129,18 +139,17 @@ export default function AgentsPage() {
 
   const columns = [
     {
-      key: "id",
-      label: t("common.idUpper"),
-      render: (agent) => (
-        <span className="font-sans text-[13px]" title={agent.id}>
-          {agent.id}
-        </span>
-      ),
+      key: "name",
+      label: t("common.name"),
+      render: (agent) => agent.name || agent.id,
     },
     {
-      key: "name",
+      key: "role",
       label: t("agents.colRole"),
-      render: (agent) => agent.name || agent.id,
+      render: (agent) =>
+        agent.description || (
+          <span className="text-muted">{t("common.noneDash")}</span>
+        ),
     },
     {
       key: "rules",
@@ -157,61 +166,45 @@ export default function AgentsPage() {
       ),
     },
     {
-      key: "assign",
-      label: t("agents.colAssign"),
+      key: "actions",
+      label: t("common.actions"),
       render: (agent) => (
-        <IconButton
-          type="button"
-          icon={ListChecks}
-          onClick={() =>
-            navigate(`/agents/${encodeURIComponent(agent.id)}/assignments`)
-          }
-          className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
-        >
-          {t("agents.assign")}
-        </IconButton>
-      ),
-    },
-    {
-      key: "edit",
-      label: t("common.edit"),
-      render: (agent) => (
-        <IconButton
-          type="button"
-          icon={Pencil}
-          onClick={() => navigate(`/agents/${encodeURIComponent(agent.id)}`)}
-          className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
-        >
-          {t("common.edit")}
-        </IconButton>
-      ),
-    },
-    {
-      key: "disable",
-      label: t("common.disable"),
-      render: (agent) => (
-        <IconButton
-          type="button"
-          icon={Ban}
-          onClick={() => handleDisable(agent)}
-          className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
-        >
-          {agent.disabled ? t("common.enable") : t("common.disable")}
-        </IconButton>
-      ),
-    },
-    {
-      key: "delete",
-      label: t("common.delete"),
-      render: (agent) => (
-        <IconButton
-          type="button"
-          icon={Trash2}
-          onClick={() => handleDelete(agent)}
-          className="rounded-lg border border-warn-border bg-warn-bg px-2 py-1.5 text-xs font-medium text-warn hover:opacity-90"
-        >
-          {t("common.delete")}
-        </IconButton>
+        <div className="flex flex-wrap gap-1.5">
+          <IconButton
+            type="button"
+            icon={ListChecks}
+            onClick={() =>
+              navigate(`/agents/${encodeURIComponent(agent.id)}/assignments`)
+            }
+            className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
+          >
+            {t("agents.assign")}
+          </IconButton>
+          <IconButton
+            type="button"
+            icon={Pencil}
+            onClick={() => navigate(`/agents/${encodeURIComponent(agent.id)}`)}
+            className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
+          >
+            {t("common.edit")}
+          </IconButton>
+          <IconButton
+            type="button"
+            icon={Ban}
+            onClick={() => handleDisable(agent)}
+            className="rounded-lg border border-line bg-fog px-2 py-1.5 text-xs font-medium hover:bg-fog/80"
+          >
+            {agent.disabled ? t("common.enable") : t("common.disable")}
+          </IconButton>
+          <IconButton
+            type="button"
+            icon={Trash2}
+            onClick={() => handleDelete(agent)}
+            className="rounded-lg border border-warn-border bg-warn-bg px-2 py-1.5 text-xs font-medium text-warn hover:opacity-90"
+          >
+            {t("common.delete")}
+          </IconButton>
+        </div>
       ),
     },
   ];

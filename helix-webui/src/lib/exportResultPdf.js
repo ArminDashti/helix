@@ -1,5 +1,6 @@
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import * as echarts from "echarts";
 import { fetchBranding } from "../api/client.js";
 import { formatDateTime } from "../i18n/format.js";
 import { hasPersianScript } from "../utils/textDirection.js";
@@ -83,6 +84,75 @@ function chartDataUrlFromInstance(instance) {
     });
   } catch {
     return "";
+  }
+}
+
+/** Sample bar chart PNG for Canvas preview / sample PDF export. */
+export function renderSampleChartDataUrl(language = "en") {
+  const cats =
+    language === "fa"
+      ? ["شمال", "جنوب", "شرق", "غرب"]
+      : ["North", "South", "East", "West"];
+  const title =
+    language === "fa" ? "درآمد بر اساس منطقه" : "Revenue by region";
+  const seriesName = language === "fa" ? "درآمد" : "Revenue";
+  const el = document.createElement("div");
+  el.style.width = "640px";
+  el.style.height = "320px";
+  el.style.position = "absolute";
+  el.style.left = "-9999px";
+  el.style.top = "0";
+  document.body.appendChild(el);
+  let chart;
+  try {
+    chart = echarts.init(el, null, {
+      renderer: "canvas",
+      width: 640,
+      height: 320,
+    });
+    chart.setOption({
+      color: ["#3d9b82"],
+      backgroundColor: "#fafcfb",
+      title: {
+        text: title,
+        left: "center",
+        textStyle: { color: "#111111", fontWeight: 600, fontSize: 14 },
+      },
+      grid: { left: 48, right: 24, top: 48, bottom: 36 },
+      xAxis: {
+        type: "category",
+        data: cats,
+        axisLabel: { color: "#445"},
+      },
+      yAxis: {
+        type: "value",
+        axisLabel: { color: "#445" },
+        splitLine: { lineStyle: { color: "#e5eeea" } },
+      },
+      series: [
+        {
+          name: seriesName,
+          type: "bar",
+          data: [420, 310, 510, 280],
+          barWidth: "48%",
+          itemStyle: { borderRadius: [6, 6, 0, 0] },
+        },
+      ],
+    });
+    return chart.getDataURL({
+      type: "png",
+      pixelRatio: 2,
+      backgroundColor: "#fafcfb",
+    });
+  } catch {
+    return "";
+  } finally {
+    try {
+      chart?.dispose();
+    } catch {
+      /* ignore */
+    }
+    el.remove();
   }
 }
 
@@ -205,9 +275,18 @@ export function buildPdfHtml({
     gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}min-height:8px;"></div>`;
   }
 
-  const footerText = escapeHtml(footerSampleText || labels.pdfFooter || "");
+  const footerText = escapeHtml(
+    (typeof prefs.footerText === "string" && prefs.footerText.trim()) ||
+      footerSampleText ||
+      labels.pdfFooter ||
+      "",
+  );
+  const footerBorder =
+    footerEl.borderWidthPx > 0
+      ? `${footerEl.borderWidthPx}px solid #1e3a5f`
+      : "none";
   const footerInline = footerEl.visible
-    ? `<div data-canvas-element="footer" style="${cssBox(footerEl)}margin-top:14px;border-top:${footerEl.borderWidthPx > 0 ? `${footerEl.borderWidthPx}px solid #1e3a5f` : "1px solid #1e3a5f"};text-align:center;">${footerText}</div>`
+    ? `<div data-canvas-element="footer" style="${cssBox(footerEl)}margin-top:14px;border-top:${footerBorder};text-align:center;">${footerText}</div>`
     : "";
 
   const rootFont = elementStyle(prefs, "text");
@@ -268,6 +347,11 @@ export async function exportResultPdf({
 
   await ensurePdfFonts();
 
+  const footerLabel =
+    (typeof prefs.footerText === "string" && prefs.footerText.trim()) ||
+    labels.pdfFooter ||
+    "";
+
   const { html, dir, lang } = buildPdfHtml({
     prompt,
     textReport,
@@ -278,7 +362,7 @@ export async function exportResultPdf({
     logoDataUrl,
     companyLogoDataUrl,
     design: prefs,
-    footerSampleText: labels.pdfFooter,
+    footerSampleText: footerLabel,
   });
 
   const orientation =
@@ -345,13 +429,15 @@ export async function exportResultPdf({
         const footerStyle = elementStyle(prefs, "footer");
         const barY = A4_H - FOOTER_H;
         const textY = barY + 6.5;
-        pdf.setDrawColor(30, 58, 95);
-        pdf.setLineWidth(0.3);
-        pdf.line(MARGIN, barY, A4_W - MARGIN, barY);
+        if (footerStyle.borderWidthPx > 0) {
+          pdf.setDrawColor(30, 58, 95);
+          pdf.setLineWidth(Math.min(0.8, footerStyle.borderWidthPx * 0.25));
+          pdf.line(MARGIN, barY, A4_W - MARGIN, barY);
+        }
         pdf.setTextColor(17, 17, 17);
         pdf.setFontSize(footerStyle.fontSizePx || 9);
         pdf.text(exportedAt, MARGIN, textY, { align: "left" });
-        pdf.text(labels.pdfFooter, A4_W / 2, textY, { align: "center" });
+        pdf.text(footerLabel, A4_W / 2, textY, { align: "center" });
         pdf.text(`${pageNum}/${totalPages}`, A4_W - MARGIN, textY, {
           align: "right",
         });

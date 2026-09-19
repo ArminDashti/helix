@@ -92,29 +92,6 @@ class SixAgentPipelineTests(SimpleTestCase):
             )
         )
 
-    def test_data_gatherer_sql_error_returns_failed_not_raise(self):
-        from . import markdown_store as store
-        from .pipeline_run import _run_agent
-
-        ctx = {
-            "prompt": "top products",
-            "mode": "grid",
-            "language": "en",
-            "actor": {"username": "armin", "is_admin": True},
-            "artifacts": {},
-        }
-        with patch("api.pipeline_run.complete_chat") as chat:
-            chat.return_value = (
-                '{"result":"done","sql":"SELECT 1","message":"ok",'
-                '"goals":"fetch top products","what_was_done":"SELECT returned rows"}'
-            )
-            with patch("api.pipeline_run.execute_select") as exe:
-                exe.side_effect = ValueError("Invalid object name")
-                with patch.object(store, "assemble_agent_prompt", return_value="system"):
-                    status, message = _run_agent("data-gatherer", ctx)
-        self.assertEqual(status, "failed")
-        self.assertIn("Invalid object name", message)
-
     def test_jalali_tir_1405_gregorian_bounds(self):
         from .jalali_dates import calendar_hint_for_prompt, jalali_to_gregorian
 
@@ -129,111 +106,137 @@ class SixAgentPipelineTests(SimpleTestCase):
         self.assertIn("YEAR(TarikhFaktor) = 1405", hint)
         self.assertIn("N'کرمان'", hint)
 
-    def test_data_gatherer_prompt_includes_calendar_hint(self):
+    def test_orchester_tool_loop_execute_then_submit(self):
         from . import markdown_store as store
-        from .pipeline_run import _run_agent
+        from .pipeline_run import _run_orchester
+
+        ctx = {
+            "prompt": "top products",
+            "mode": "analytical_report",
+            "language": "en",
+            "report_type": "low",
+            "actor": {"username": "armin", "is_admin": True},
+            "artifacts": {},
+            "step_log": [],
+            "pipeline_started": 0,
+        }
+        calls = {"n": 0}
+
+        def fake_chat(agent_id, messages, tools=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_sql",
+                            "type": "function",
+                            "function": {
+                                "name": "execute_select",
+                                "arguments": '{"sql":"SELECT TOP 1 1 AS n"}',
+                            },
+                        }
+                    ],
+                }
+            return {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": "call_done",
+                        "type": "function",
+                        "function": {
+                            "name": "submit_result",
+                            "arguments": (
+                                '{"text_report":"One row returned.","message":"ok"}'
+                            ),
+                        },
+                    }
+                ],
+            }
+
+        with patch("api.pipeline_run.complete_chat_messages", side_effect=fake_chat):
+            with patch("api.pipeline_run.execute_select") as exe:
+                exe.return_value = {
+                    "sql": "SELECT TOP 1 1 AS n",
+                    "columns": ["n"],
+                    "rows": [{"n": 1}],
+                }
+                with patch.object(store, "assemble_agent_prompt", return_value="system"):
+                    status, message = _run_orchester(ctx)
+        self.assertEqual(status, "done")
+        self.assertIn("ok", message.lower())
+        self.assertIsNotNone(ctx.get("final_payload"))
+        self.assertEqual(ctx["final_payload"]["text_report"], "One row returned.")
+        self.assertEqual(calls["n"], 2)
+
+    def test_orchester_sql_error_stays_in_tool_result(self):
+        from . import markdown_store as store
+        from .pipeline_run import _dispatch_tool
+
+        ctx = {
+            "prompt": "top products",
+            "mode": "grid",
+            "language": "en",
+            "actor": {"username": "armin", "is_admin": True},
+            "artifacts": {},
+        }
+        with patch("api.pipeline_run.execute_select") as exe:
+            exe.side_effect = ValueError("Invalid object name")
+            result_json, done = _dispatch_tool(
+                "execute_select", {"sql": "SELECT 1"}, ctx
+            )
+        self.assertFalse(done)
+        self.assertIn("Invalid object name", result_json)
+        self.assertIn("Invalid object name", ctx.get("last_error") or "")
+
+    def test_orchester_user_message_includes_calendar_hint(self):
+        from .pipeline_run import _build_user_message
 
         ctx = {
             "prompt": "تیر 1405 کرمان",
             "mode": "grid",
             "language": "fa",
             "actor": {"username": "armin", "is_admin": True},
-            "artifacts": {},
+            "db_intent": {"found": False, "checked_tables": []},
         }
-        with patch("api.pipeline_run.complete_chat") as chat:
-            chat.return_value = (
-                '{"result":"done","sql":"SELECT TOP 1 1 AS n","message":"ok",'
-                '"goals":"fetch one row for test","what_was_done":"TOP 1 query returned 1 row"}'
-            )
-            with patch("api.pipeline_run.execute_select") as exe:
-                exe.return_value = {"sql": "SELECT TOP 1 1 AS n", "columns": ["n"], "rows": [{"n": 1}]}
-                with patch.object(store, "assemble_agent_prompt", return_value="system"):
-                    status, _message = _run_agent("data-gatherer", ctx)
-        self.assertEqual(status, "done")
-        user = chat.call_args[0][1]
+        user = _build_user_message(ctx)
         self.assertIn("TarikhFaktor >= '2026-06-22'", user)
+
+    def test_orchester_hard_block_without_llm(self):
+        from .pipeline_run import _run_orchester
+
+        ctx = {
+            "prompt": "DROP TABLE Sales.Moshtary",
+            "mode": "grid",
+            "language": "en",
+            "actor": {"username": "armin", "is_admin": True},
+            "artifacts": {},
+            "step_log": [],
+        }
+        with patch("api.pipeline_run.complete_chat_messages") as chat:
+            status, message = _run_orchester(ctx)
+        chat.assert_not_called()
+        self.assertEqual(status, "fail")
+        self.assertIn("not allowed", message.lower())
 
     def test_orchester_self_retry_edge_on_failure(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, next_edge
 
         graph = compile_pipeline_flow(default_pipeline_flow())
+        # Single-try: orchester has no self-retry circuit
         edge = next_edge(graph, "orchester", "fail", {})
-        self.assertIsNotNone(edge)
-        self.assertEqual(edge["target"], "orchester")
-
-    def test_prepare_data_gatherer_retry_resets_validator_state(self):
-        from .pipeline_run import _prepare_data_gatherer_retry
-
-        ctx = {
-            "validator_visit": 1,
-            "sql_fetch": {"sql": "SELECT 1", "rows": []},
-            "last_error": "wrong table",
-        }
-        _prepare_data_gatherer_retry(ctx)
-        self.assertEqual(ctx["validator_visit"], 0)
-        self.assertNotIn("sql_fetch", ctx)
-        self.assertNotIn("validation_handoff", ctx)
-
-    def test_validator_uses_handoff_prompt(self):
-        from . import markdown_store as store
-        from .pipeline_run import _run_agent
-
-        ctx = {
-            "prompt": "top products",
-            "mode": "grid",
-            "language": "en",
-            "actor": {"username": "armin", "is_admin": True},
-            "artifacts": {},
-            "validation_handoff": {
-                "agent_id": "data-gatherer",
-                "goals": "Top products by revenue",
-                "what_was_done": "Grouped by day instead of product",
-            },
-        }
-        captured: list[str] = []
-
-        def fake_chat(agent_id, user, system):
-            captured.append(user)
-            return '{"result":"pass","message":"ok"}'
-
-        with patch("api.pipeline_run.complete_chat", side_effect=fake_chat):
-            with patch.object(store, "assemble_agent_prompt", return_value="system"):
-                status, _ = _run_agent("validator", ctx)
-        self.assertEqual(status, "pass")
-        self.assertEqual(ctx["validator_visit"], 1)
-        self.assertTrue(captured)
-        joined = captured[0].lower()
-        self.assertIn("validation_handoff", joined)
-        self.assertIn("goals", joined)
-        self.assertIn("what_was_done", joined)
-
-    def test_data_gatherer_requires_validation_handoff(self):
-        from . import markdown_store as store
-        from .pipeline_run import _run_agent
-
-        ctx = {
-            "prompt": "top products",
-            "mode": "grid",
-            "language": "en",
-            "actor": {"username": "armin", "is_admin": True},
-            "artifacts": {},
-        }
-        with patch("api.pipeline_run.complete_chat") as chat:
-            chat.return_value = '{"result":"done","sql":"SELECT TOP 1 1 AS n","message":"ok"}'
-            with patch("api.pipeline_run.execute_select") as exe:
-                exe.return_value = {"sql": "SELECT TOP 1 1 AS n", "columns": ["n"], "rows": [{"n": 1}]}
-                with patch.object(store, "assemble_agent_prompt", return_value="system"):
-                    status, message = _run_agent("data-gatherer", ctx)
-        self.assertEqual(status, "failed")
-        self.assertIn("goals", message.lower())
+        self.assertIsNone(edge)
+        self.assertEqual(graph["entry"], "orchester")
 
     def test_default_edge_limit_is_five(self):
         from .pipeline_graph import DEFAULT_EDGE_LIMIT, compile_pipeline_flow, default_pipeline_flow
 
-        self.assertEqual(DEFAULT_EDGE_LIMIT, 5)
+        self.assertEqual(DEFAULT_EDGE_LIMIT, 1)
         graph = compile_pipeline_flow(default_pipeline_flow())
         for edge in graph.get("edges") or []:
-            self.assertLessEqual(edge.get("limit", DEFAULT_EDGE_LIMIT), 5)
+            self.assertLessEqual(edge.get("limit", DEFAULT_EDGE_LIMIT), 1)
 
     def test_research_flow_matches_default_orchester_seed(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, research_pipeline_flow
@@ -300,49 +303,28 @@ class SixAgentPipelineTests(SimpleTestCase):
             ["inflation", "rates", "4"],
         )
 
-    def test_web_search_guard_key_per_research_tier(self):
-        from .pipeline_run import (
-            _mark_web_search_invoked,
-            _web_search_already_invoked,
-            _web_search_guard_key,
-        )
+    def test_search_web_tool_sets_brief(self):
+        from .pipeline_run import _dispatch_tool
 
-        ctx: dict = {"research_tier": "low"}
-        self.assertEqual(_web_search_guard_key(ctx), "_web_search_invoked_low")
-        self.assertFalse(_web_search_already_invoked(ctx))
-        _mark_web_search_invoked(ctx)
-        self.assertTrue(_web_search_already_invoked(ctx))
-
-        ctx["research_tier"] = "medium"
-        self.assertEqual(_web_search_guard_key(ctx), "_web_search_invoked_medium")
-        self.assertFalse(_web_search_already_invoked(ctx))
-
-    def test_researcher_web_search_probe_invokes_searcher(self):
-        from .pipeline_run import _maybe_run_web_search_for_researcher
-
-        ctx = {"prompt": "Compare our margin to industry benchmarks in 2025", "language": "en"}
-        with patch("api.pipeline_run.complete_chat") as chat:
-            with patch("api.pipeline_run.search_web") as search:
-                with patch("api.pipeline_run._run_web_searcher") as run_search:
-                    chat.return_value = (
-                        '{"result":"done","message":"need benchmarks",'
-                        '"web_search_queries":["retail margin benchmark 2025"]}'
-                    )
-                    run_search.return_value = ("done", "brief ready")
-                    _maybe_run_web_search_for_researcher(ctx)
-        run_search.assert_called_once()
-        self.assertTrue(ctx.get("_researcher_web_search_invoked"))
-
-    def test_researcher_web_search_probe_skips_warehouse_only(self):
-        from .pipeline_run import _maybe_run_web_search_for_researcher
-
-        ctx = {"prompt": "Top 10 customers by revenue", "language": "en"}
-        with patch("api.pipeline_run.complete_chat") as chat:
-            with patch("api.pipeline_run._run_web_searcher") as run_search:
-                chat.return_value = '{"result":"skip","message":"warehouse only"}'
-                _maybe_run_web_search_for_researcher(ctx)
-        run_search.assert_not_called()
-        self.assertTrue(ctx.get("_researcher_web_search_invoked"))
+        ctx: dict = {"artifacts": {}}
+        with patch("api.pipeline_run.search_web") as search:
+            search.return_value = [
+                {
+                    "query": "retail margin",
+                    "title": "Bench",
+                    "url": "https://example.com",
+                    "snippet": "10%",
+                }
+            ]
+            result_json, done = _dispatch_tool(
+                "search_web",
+                {"queries": ["retail margin"], "objective": "benchmarks"},
+                ctx,
+            )
+        self.assertFalse(done)
+        self.assertTrue(ctx.get("_web_search_invoked"))
+        self.assertIn("Bench", ctx.get("web_search_brief") or "")
+        self.assertIn('"ok":true', result_json.lower().replace(" ", ""))
 
     def test_assemble_prompt_includes_references_section(self):
         from . import markdown_store as store
@@ -359,7 +341,7 @@ class SixAgentPipelineTests(SimpleTestCase):
                             "api.docs_catalog.format_live_catalog_for_prompt",
                             return_value="### Sales.Moshtary\nColumns: ccMoshtary, NameMoshtary",
                         ):
-                            prompt = store.assemble_agent_prompt("guardian")
+                            prompt = store.assemble_agent_prompt("orchester")
         self.assertIn("## References", prompt)
         self.assertIn("base-instruction", prompt)
         self.assertIn("## Live catalog", prompt)
@@ -419,6 +401,34 @@ class LlmSettingsTests(SimpleTestCase):
                 self.assertEqual(get_provider(), "openai_compatible")
                 self.assertEqual(get_llm_base_url(), "")
                 self.assertEqual(get_openrouter_settings()["base_url"], "")
+
+    def test_workspace_persists_and_returns_in_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "helix.config.yaml"
+            with override_settings(HELIX_CONFIG_PATH=str(config_path)):
+                save_config(
+                    {
+                        "provider": "openai_compatible",
+                        "openrouter": {
+                            "base_url": "http://127.0.0.1:8081/v1",
+                        },
+                    }
+                )
+                update_openrouter_settings(
+                    {
+                        "workspace": "C:/Users/armin/GitHub/helix",
+                        "mode": "ask",
+                    }
+                )
+                settings = get_openrouter_settings()
+                self.assertEqual(
+                    settings["workspace"], "C:/Users/armin/GitHub/helix"
+                )
+                self.assertEqual(settings["mode"], "ask")
+                raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    raw["openrouter"]["workspace"], "C:/Users/armin/GitHub/helix"
+                )
 
     def test_openrouter_defaults_base_url_and_saves_custom(self):
         with tempfile.TemporaryDirectory() as tmp:

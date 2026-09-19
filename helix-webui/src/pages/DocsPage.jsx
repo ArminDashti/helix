@@ -7,6 +7,7 @@ import IconButton from "../components/IconButton.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { failMessage, translateKnownMessage } from "../i18n/apiErrors.js";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 
 export default function DocsPage() {
   const { t } = useI18n();
@@ -25,12 +26,16 @@ export default function DocsPage() {
   const [savingColumn, setSavingColumn] = useState(false);
   const [columnError, setColumnError] = useState(null);
 
+  async function reloadTables() {
+    const data = await fetchDocsTables();
+    setTables(data.tables || []);
+    setListError(data.error || null);
+    return data;
+  }
   useEffect(() => {
     (async () => {
       try {
-        const data = await fetchDocsTables();
-        setTables(data.tables || []);
-        setListError(data.error || null);
+        const data = await reloadTables();
         const first = data.tables?.[0]?.full_name;
         if (first) setSelected(first);
       } catch (err) {
@@ -40,6 +45,10 @@ export default function DocsPage() {
       }
     })();
   }, [t]);
+  useLiveSync(["docs", "config", "database"], () => reloadTables().catch(() => {}));
+  useLiveSync("docs", () => {
+    if (selected) fetchDocsTable(selected).then((d) => { setDetail(d); setOverviewDraft(d.overview || ""); }).catch(() => {});
+  });
 
   useEffect(() => {
     if (!selected) {
@@ -98,30 +107,6 @@ export default function DocsPage() {
         render: (col) => (
           <span className="font-sans text-[13px]">{col.name}</span>
         ),
-      },
-      {
-        key: "data_type",
-        label: t("docs.colType"),
-        render: (col) => (
-          <span className="text-muted">{col.data_type || t("common.noneDash")}</span>
-        ),
-      },
-      {
-        key: "nullable",
-        label: t("docs.colNull"),
-        render: (col) => (
-          <span className="text-muted">
-            {col.nullable ? t("docs.nullableYes") : t("docs.nullableNo")}
-          </span>
-        ),
-      },
-      {
-        key: "sql_description",
-        label: t("docs.colSqlDescription"),
-        render: (col) =>
-          col.sql_description || (
-            <span className="text-muted">{t("docs.noSqlDescription")}</span>
-          ),
       },
       {
         key: "description",

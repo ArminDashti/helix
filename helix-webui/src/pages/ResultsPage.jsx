@@ -20,6 +20,7 @@ import DataGrid from "../components/DataGrid.jsx";
 import IconButton from "../components/IconButton.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 import { failMessage } from "../i18n/apiErrors.js";
 import { formatDateTime, formatDurationSeconds } from "../i18n/format.js";
 import { assetUrl } from "../utils/assetUrl.js";
@@ -97,6 +98,20 @@ function ResultsList() {
       }
     })();
   }, [t]);
+
+  // Live UI: reflect any backend/UI change immediately (poll ~2.5s + SSE + cross-tab + optimistic mutation)
+  useLiveSync("results", () => {
+    load().catch(() => {});
+  });
+  useEffect(() => {
+    function onVis() { if (document.visibilityState === "visible") load().catch(() => {}); }
+    window.addEventListener("focus", onVis);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onVis);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   async function handleExport(item) {
     setError(null);

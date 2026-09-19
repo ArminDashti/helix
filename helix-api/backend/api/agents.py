@@ -11,7 +11,8 @@ AGENT_PIPELINE = [
 AGENT_IDS = [a["id"] for a in AGENT_PIPELINE]
 AGENT_BY_ID = {a["id"]: a for a in AGENT_PIPELINE}
 
-# Internal phase agents: prompts/skills only — not graph nodes or Agents UI roster.
+# Prompt libraries for Skills/Rules editors — not runtime LLM runners.
+# Runtime is a single Orchester tool loop (execute_select / search_web / submit_result).
 PHASE_AGENT_PIPELINE = [
     {
         "id": "guardian",
@@ -104,7 +105,7 @@ LEGACY_AGENT_RENAMES = {
     "publisher": "orchester",
 }
 
-# Phase ids used by _run_orchester when calling _run_agent internally.
+# Phase ids remain resolvable for markdown scopes / legacy renames.
 _RUNTIME_PIPELINE_AGENT_IDS = frozenset(PHASE_AGENT_IDS)
 
 

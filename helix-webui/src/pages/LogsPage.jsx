@@ -6,6 +6,7 @@ import DataGrid from "../components/DataGrid.jsx";
 import IconButton from "../components/IconButton.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 import { failMessage } from "../i18n/apiErrors.js";
 import { formatDateTime } from "../i18n/format.js";
 
@@ -139,6 +140,14 @@ function LogsList() {
       }
     })();
   }, [t]);
+
+  useLiveSync("logs", () => load().catch(() => {}));
+  useEffect(() => {
+    function onFocusVis() { if (document.visibilityState !== "hidden") load().catch(() => {}); }
+    window.addEventListener("focus", onFocusVis);
+    document.addEventListener("visibilitychange", onFocusVis);
+    return () => { window.removeEventListener("focus", onFocusVis); document.removeEventListener("visibilitychange", onFocusVis); };
+  }, []);
 
   async function handleDelete(item) {
     if (!window.confirm(t("logs.deleteConfirm"))) return;

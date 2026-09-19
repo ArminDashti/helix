@@ -7,6 +7,7 @@ import IconButton from "../components/IconButton.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { failMessage } from "../i18n/apiErrors.js";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 import useFlash from "../lib/useFlash.js";
 import { assetUrl } from "../utils/assetUrl.js";
 
@@ -49,6 +50,13 @@ export default function AdminPage() {
       }
     })();
   }, [t]);
+  useLiveSync("users", () => reload().catch(() => {}));
+  useEffect(() => {
+    function onFocusVis() { if (document.visibilityState !== "hidden") reload().catch(() => {}); }
+    window.addEventListener("focus", onFocusVis);
+    document.addEventListener("visibilitychange", onFocusVis);
+    return () => { window.removeEventListener("focus", onFocusVis); document.removeEventListener("visibilitychange", onFocusVis); };
+  }, []);
 
   function resetUserForm() {
     setUserForm(emptyUserForm);

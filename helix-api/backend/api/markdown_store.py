@@ -397,21 +397,20 @@ def _skill_exists_in_shared(skill_id: str) -> bool:
 
 
 def default_skill_assignments() -> dict[str, list[str]]:
-    """Map scope/skill_id → pipeline agents listed in each AGENT.md."""
-    known = set(SYNC_AGENT_IDS)
+    """Map scope/skill_id → orchester (sole runtime agent; phase folders are editors)."""
     inverted: dict[str, list[str]] = {}
     for agent_id in SYNC_AGENT_IDS:
         for skill_id in _parse_agent_md_skill_ids(agent_id):
             scope = "shared" if _skill_exists_in_shared(skill_id) else agent_id
             key = _skill_assign_key(scope, skill_id)
             agents = inverted.setdefault(key, [])
-            if agent_id in known and agent_id not in agents:
-                agents.append(agent_id)
+            if "orchester" not in agents:
+                agents.append("orchester")
     return inverted
 
 
 def default_rule_assignments() -> dict[str, list[str]]:
-    """Shared rules → all pipeline agents; per-agent rules → that agent."""
+    """All seed rules → orchester (phase folders remain editable scopes)."""
     agents_root = _agents_source_dir()
     assignments: dict[str, list[str]] = {}
     for agent_id in SYNC_AGENT_IDS:
@@ -421,13 +420,13 @@ def default_rule_assignments() -> dict[str, list[str]]:
         for rule_file in sorted(rules_folder.glob("*.md")):
             stem = _strip_numeric_prefix(rule_file.stem)
             bucket = assignments.setdefault(stem, [])
-            if agent_id not in bucket:
-                bucket.append(agent_id)
+            if "orchester" not in bucket:
+                bucket.append("orchester")
     shared_rules = agents_root / "_shared" / "rules"
     if shared_rules.is_dir():
         for rule_file in sorted(shared_rules.glob("*.md")):
             stem = _strip_numeric_prefix(rule_file.stem)
-            assignments[stem] = list(AGENT_IDS)
+            assignments[stem] = ["orchester"]
     return assignments
 
 
@@ -727,10 +726,15 @@ def sync_pipeline_agents_from_source() -> None:
     for agent_id in SYNC_AGENT_IDS:
         agent_md = agents_root / agent_id / "AGENT.md"
         if agent_md.is_file():
-            (instructions_dir() / f"{agent_id}.md").write_text(
-                agent_md.read_text(encoding="utf-8"),
-                encoding="utf-8",
-            )
+            dest = instructions_dir() / f"{agent_id}.md"
+            try:
+                dest.write_text(
+                    agent_md.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+            except OSError:
+                # lean-ctx: Windows Docker bind mounts can raise Errno 22; skip sync write
+                pass
 
     shared_rules = agents_root / "_shared" / "rules"
     if shared_rules.is_dir():

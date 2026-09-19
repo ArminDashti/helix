@@ -173,6 +173,16 @@ def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
             needs_reset = True
         if node_ids & set(PHASE_AGENT_IDS):
             needs_reset = True
+        # Drop stale self-retry circuit: single try has no e_retry_orchester
+        for edge in graph.get("edges") or []:
+            if not isinstance(edge, dict):
+                continue
+            eid = str(edge.get("id") or "")
+            src = str(edge.get("source") or "")
+            tgt = str(edge.get("target") or "")
+            if eid.startswith("e_retry_") and src == "orchester" and tgt == "orchester":
+                needs_reset = True
+                break
     flow = data.get("pipeline_flow")
     if isinstance(flow, dict) and flow.get("type") == "stages":
         children = flow.get("children") or []
@@ -692,6 +702,8 @@ def get_openrouter_settings() -> dict[str, Any]:
         base_url = DEFAULT_OPENROUTER_BASE_URL
     else:
         base_url = ""
+    workspace = str(raw.get("workspace") or "").strip()
+    mode = str(raw.get("mode") or "").strip()
     return {
         "base_url": base_url,
         "app_name": (
@@ -702,6 +714,8 @@ def get_openrouter_settings() -> dict[str, Any]:
         "default_model": default_model,
         "agents": agents,
         "token_configured": bool(token),
+        "workspace": workspace,
+        "mode": mode,
     }
 
 
@@ -723,6 +737,12 @@ def update_openrouter_settings(payload: dict[str, Any]) -> dict[str, Any]:
     stored_base_url = _normalize_base_url(raw.get("base_url"))
     if "base_url" in payload:
         stored_base_url = _normalize_base_url(payload.get("base_url"))
+    stored_workspace = str(raw.get("workspace") or "").strip()
+    if "workspace" in payload:
+        stored_workspace = str(payload.get("workspace") or "").strip()
+    stored_mode = str(raw.get("mode") or "").strip()
+    if "mode" in payload:
+        stored_mode = str(payload.get("mode") or "").strip()
     if "app_name" in payload:
         value = payload["app_name"]
         current["app_name"] = (
@@ -756,6 +776,12 @@ def update_openrouter_settings(payload: dict[str, Any]) -> dict[str, Any]:
         "default_model": current["default_model"],
         "agents": deepcopy(current["agents"]),
     }
+    if stored_workspace:
+        section["workspace"] = stored_workspace
+    if stored_mode:
+        section["mode"] = stored_mode
+    if "timeout_seconds" in raw:
+        section["timeout_seconds"] = raw["timeout_seconds"]
     if stored_token:
         section["token"] = stored_token
     data["openrouter"] = section

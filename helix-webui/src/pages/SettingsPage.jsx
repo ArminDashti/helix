@@ -26,6 +26,7 @@ import {
 } from "../api/client.js";
 import FlashMessage from "../components/FlashMessage.jsx";
 import IconButton from "../components/IconButton.jsx";
+import LlmChatTester from "../components/LlmChatTester.jsx";
 import ModelCombobox from "../components/ModelCombobox.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useApiStatus } from "../context/ApiStatusContext.jsx";
@@ -36,6 +37,7 @@ import useFlash from "../lib/useFlash.js";
 import { assetUrl } from "../utils/assetUrl.js";
 import { compareAz, sortByLabel, sortStrings } from "../utils/sortOptions.js";
 import { agentCompanyLabel } from "../utils/agentLabel.js";
+import { useLiveSync } from "../context/LiveSyncContext.jsx";
 
 const EMPTY_DB = {
   engine: "sqlite",
@@ -61,6 +63,8 @@ const EMPTY_OPENROUTER = {
   default_model: "composer-2.5",
   agents: {},
   token_configured: false,
+  workspace: "",
+  mode: "",
 };
 
 const LLM_AGENT_IDS = ["orchester", "web-searcher"];
@@ -480,6 +484,29 @@ export default function SettingsPage() {
     })();
   }, [t]);
 
+  // Live UI: any backend change to config/branding/users must reflect immediately
+  useLiveSync(["config", "branding", "database", "pipeline_graph"], () => {
+    // soft reload relevant sections without full loading flicker
+    (async () => {
+      try { const d = await fetchBranding(); setBrandingForm((p) => ({ ...p, ...(d.branding || {}) })); } catch {}
+      try { const d = await fetchDatabaseSettings(); setDbForm(d.database || EMPTY_DB); } catch {}
+      try { const d = await fetchProviderSettings(); setProviderForm(d.provider || {}); } catch {}
+      try { const d = await fetchOpenRouterSettings(); setOpenRouterForm(d.openrouter || EMPTY_OPENROUTER); } catch {}
+    })();
+  });
+  useEffect(() => {
+    function onFocusVis() {
+      if (document.visibilityState !== "hidden") {
+        (async () => {
+          try { const d = await fetchBranding(); setBrandingForm((p) => ({ ...p, ...(d.branding || {}) })); } catch {}
+        })();
+      }
+    }
+    window.addEventListener("focus", onFocusVis);
+    document.addEventListener("visibilitychange", onFocusVis);
+    return () => { window.removeEventListener("focus", onFocusVis); document.removeEventListener("visibilitychange", onFocusVis); };
+  }, []);
+
   useEffect(() => {
     if (loading) return;
     if (!activeTokenConfigured) {
@@ -660,6 +687,8 @@ export default function SettingsPage() {
         base_url: (orForm.base_url || "").trim(),
         default_model: orForm.default_model,
         agents: orForm.agents,
+        workspace: (orForm.workspace || "").trim(),
+        mode: (orForm.mode || "").trim(),
       };
       if (orForm.token?.trim()) {
         payload.token = orForm.token.trim();
@@ -859,6 +888,7 @@ export default function SettingsPage() {
       {activeSection === "status" ? <StatusLogsSection /> : null}
 
       {activeSection === "llm" ? (
+        <>
         <form
           onSubmit={handleSaveLlm}
           className="space-y-3 rounded-2xl border border-line/80 bg-paper/80 p-4 backdrop-blur-sm"
@@ -908,6 +938,18 @@ export default function SettingsPage() {
               spellCheck={false}
             />
           </Field>
+
+          <Field label={t("settings.workspace")} id="llm_workspace">
+            <input
+              id="llm_workspace"
+              value={orForm.workspace || ""}
+              onChange={(e) => updateOrField("workspace", e.target.value)}
+              className={inputClass}
+              placeholder={t("settings.workspacePlaceholder")}
+              spellCheck={false}
+            />
+          </Field>
+          <p className="text-xs text-muted">{t("settings.workspaceHint")}</p>
 
           <Field label={t("settings.apiKey")} id="llm_token">
             <input
@@ -980,6 +1022,14 @@ export default function SettingsPage() {
             {t("settings.saveLlm")}
           </IconButton>
         </form>
+        <div className="mt-3">
+          <LlmChatTester
+            models={models}
+            defaultModel={orForm.default_model}
+            orForm={orForm}
+          />
+        </div>
+        </>
       ) : null}
 
       {activeSection === "database" ? (

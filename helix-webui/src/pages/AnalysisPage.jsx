@@ -75,6 +75,8 @@ export default function AnalysisPage() {
   const [runError, setRunError] = useState(null);
   const [activePrompt, setActivePrompt] = useState("");
   const [runMessages, setRunMessages] = useState([]);
+  const [runMeta, setRunMeta] = useState({});
+  const [runStartedAt, setRunStartedAt] = useState(null);
   const [nameById, setNameById] = useState({});
   const [llmError, setLlmError] = useState(null);
   const abortRef = useRef(null);
@@ -84,6 +86,7 @@ export default function AnalysisPage() {
       sortByLabel(
         [
           { value: "chart", label: t("analysis.modeChart") },
+          { value: "grid", label: t("analysis.modeGrid") },
           { value: "research", label: t("analysis.modeResearch") },
         ],
         (item) => item.label,
@@ -158,6 +161,14 @@ export default function AnalysisPage() {
     setLlmError(null);
     setRunError(null);
     setRunMessages([]);
+    setRunMeta({
+      mode,
+      language: locale,
+      report_type: needsType(mode) ? reportType : undefined,
+      chart_type: needsChart(mode) ? chartTypesSelected[0] : undefined,
+      chart_types: needsChart(mode) ? chartTypesSelected.slice(0, 4) : undefined,
+    });
+    setRunStartedAt(Date.now());
     setActivePrompt(trimmed);
     setModalOpen(true);
     setRunning(true);
@@ -195,6 +206,13 @@ export default function AnalysisPage() {
               node_id: event.node_id,
               message: event.message,
               status: event.status,
+              result: event.result,
+              at: event.at,
+              elapsed_s: event.elapsed_s,
+              run_id: event.run_id,
+              sql: event.sql,
+              row_count: event.row_count,
+              handoff: event.handoff,
             },
           ]);
         } else if (event?.event === "error" && event.error) {
@@ -406,6 +424,8 @@ export default function AnalysisPage() {
         error={runError}
         onDismiss={dismissModal}
         nameById={nameById}
+        meta={runMeta}
+        startedAt={runStartedAt}
       />
     </div>
   );

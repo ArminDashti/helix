@@ -54,7 +54,7 @@ export function defaultElements() {
       borderRadiusPx: 14,
       paddingPx: 16,
     }),
-    grid: createElementStyle({ fontSizePx: 13, paddingPx: 8 }),
+    grid: createElementStyle({ fontSizePx: 13, paddingPx: 8, borderWidthPx: 0 }),
     footer: createElementStyle({
       fontSizePx: 9,
       paddingPx: 4,
@@ -66,6 +66,7 @@ export function defaultElements() {
 export const DEFAULT_PDF_DESIGN = {
   orientation: "landscape",
   companyLogoDataUrl: "",
+  footerText: "",
   elements: defaultElements(),
 };
 
@@ -102,6 +103,7 @@ export function normalizePdfDesign(raw = {}) {
       raw.orientation === "portrait" ? "portrait" : DEFAULT_PDF_DESIGN.orientation,
     companyLogoDataUrl:
       typeof raw.companyLogoDataUrl === "string" ? raw.companyLogoDataUrl : "",
+    footerText: typeof raw.footerText === "string" ? raw.footerText : "",
     elements: defaultElements(),
   };
 

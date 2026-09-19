@@ -17,6 +17,7 @@
     "name": "Name",
     "none": "None",
     "noneDash": "—",
+    "actions": "Actions",
     "failedToLoad": "Failed to load",
     "saveFailed": "Save failed",
     "createFailed": "Create failed",
@@ -204,7 +205,12 @@
     "workingAgent": "{{name}} is working…",
     "fallbackUser": "Prompt",
     "fallbackSystem": "System",
-    "fallbackAgent": "Agent"
+    "fallbackAgent": "Agent",
+    "running": "Running",
+    "failed": "Failed",
+    "done": "Done",
+    "finished": "Finished — result will be saved.",
+    "errorHint": "See error detail below"
   },
   "results": {
     "title": "Results",
@@ -360,7 +366,8 @@
     "exportSample": "Export sample PDF",
     "reset": "Reset defaults",
     "samplePrompt": "Revenue by region (sample)",
-    "sampleReport": "East leads at 510; West trails at 280. Prioritize West conversion and East capacity."
+    "sampleReport": "East leads at 510; West trails at 280. Prioritize West conversion and East capacity.",
+    "footerText": "Footer text"
   },
   "reportDesign": {
     "title": "Canvas",
@@ -429,6 +436,9 @@
     "apiOpenaiCompatible": "OpenAI-compatible",
     "baseUrl": "Base URL",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
+    "workspace": "Workspace path",
+    "workspacePlaceholder": "C:/path/to/project",
+    "workspaceHint": "Required by some Cursor OpenAI-compatible proxies for chat/completions. Leave empty for OpenRouter or api.openai.com.",
     "apiKey": "API key",
     "apiKeySavedPlaceholder": "Saved on the API host",
     "apiKeyPastePlaceholder": "Paste API key",
@@ -441,6 +451,13 @@
     "llmSaved": "LLM settings saved to helix.config.yaml.",
     "modelsSearch": "Search models…",
     "modelsSearchOpenRouter": "Search OpenRouter models…",
+    "llmTesterTitle": "Test the model — chat here",
+    "llmTesterHint": "Send a message to the currently configured LLM to verify the API key, base URL and model work. No data is saved.",
+    "llmTesterEmpty": "No messages yet. Try: 'Hello, what model are you?'",
+    "llmTesterPlaceholder": "Type a message to test the LLM…",
+    "llmTesterSend": "Send",
+    "llmTesterSending": "Sending…",
+    "llmTesterClear": "Clear chat",
     "dbEngine": "Engine",
     "engineSqlite": "AdventureWorks",
     "enginePostgresql": "PostgreSQL",

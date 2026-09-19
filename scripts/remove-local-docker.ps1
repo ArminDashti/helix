@@ -15,6 +15,7 @@ $Images = @(
     'helix-api:local-dev'
 )
 $Volumes = @(
+    'helix-sqlite-data',
     'helix-postgres-data',
     'helix-pip-cache',
     'helix-webui-node-modules'

@@ -2,21 +2,6 @@
 # set PUBLISH_PORT= (empty) so the service is reachable only on DOCKER_NETWORK.
 name: helix
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: helix-postgres
-    restart: "no"
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-helix}
-      POSTGRES_USER: ${POSTGRES_USER:-helix}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-helix}
-    volumes:
-      - helix-pg-data:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PUBLISH_PORT-5432}:5432"
-    networks:
-      - helix-net
-
   helix-api:
     image: ${IMAGE_TAG:-helix-api:latest}
     build:
@@ -24,19 +9,20 @@ services:
       dockerfile: dockerfile
     container_name: helix-api
     restart: "no"
-    depends_on:
-      - postgres
     environment:
       HELIX_ALLOWED_HOSTS: "*"
       HELIX_DEBUG: "false"
+      HELIX_DJANGO_ENGINE: sqlite
+      HELIX_DJANGO_SQLITE_PATH: /app/backend/data/helix-django.sqlite3
+      HELIX_CORS_ORIGINS: "http://helix.local,http://pc-armin,http://127.0.0.1:8081,http://localhost:8081"
       GUNICORN_TIMEOUT: "660"
       OPENROUTER_TOKEN: ${OPENROUTER_TOKEN:-}
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
       PORT: "${INTERNAL_PORT:-8000}"
-      DATABASE_URL: ${DATABASE_URL:-postgresql://helix:helix@postgres:5432/helix}
     volumes:
       - ./backend/markdown-files:/app/backend/markdown-files
       - ./helix.config.yaml:/app/helix.config.yaml
+      - helix-sqlite-data:/app/backend/data
     expose:
       - "${INTERNAL_PORT:-8000}"
     ports:
@@ -48,7 +34,7 @@ services:
       - t3-net
 
 volumes:
-  helix-pg-data:
+  helix-sqlite-data:
 
 networks:
   helix-net:

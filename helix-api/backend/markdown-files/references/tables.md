@@ -176,3 +176,12 @@ Never invent tables, views, or columns.
 | ccMarkazPakhsh | Distribution center id |
 | ShomarehFaktorAz | Invoice number from |
 | ShomarehFaktorTa | Invoice number to |
+
+## AssetAccounting.Amval
+
+- **Kind:** table
+- **Description:**
+
+| Column | Description |
+| --- | --- |
+| ShomarehAmvalOld |  |

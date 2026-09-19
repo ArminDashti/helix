@@ -2,6 +2,7 @@
  * API helpers. In dev, Vite proxies /api → Django :8000.
  * Absolute VITE_API_BASE_URL still supported when set.
  */
+import { notifyMutation } from "../lib/liveBus.js";
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -147,7 +148,26 @@ async function parseJson(response, path, { silent = false } = {}) {
 async function requestJson(path, options = {}) {
   const { silent = false, ...fetchOpts } = options;
   const response = await apiFetch(path, { ...fetchOpts, silent });
-  return parseJson(response, path, { silent });
+  const data = await parseJson(response, path, { silent });
+  // Optimistic live sync: every successful non-GET mutates UI immediately (0ms) — backend poll/SSE reconciles cross-tab.
+  try {
+    const method = String(fetchOpts.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") notifyMutation(path, method);
+  } catch {}
+  return data;
+}
+
+export async function fetchStateVersion({ signal } = {}) {
+  const url = (() => {
+    const p = "/api/state-version/";
+    if (API_BASE) return `${API_BASE}${p}`;
+    const base = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
+    if (!base || base === "/") return p;
+    return `${base}${p}`;
+  })();
+  const res = await fetch(url, { signal, headers: { Accept: "application/json" }, cache: "no-store" });
+  if (!res.ok) throw new Error(`state-version ${res.status}`);
+  return res.json();
 }
 
 export async function fetchHealth({ silent = false } = {}) {
@@ -228,6 +248,7 @@ export async function deleteReference(name) {
   if (!res.ok && res.status !== 204) {
     await parseJson(res, path);
   }
+  try { notifyMutation(path, "DELETE"); } catch {}
 }
 
 export async function fetchRules() {
@@ -265,6 +286,7 @@ export async function deleteRule(id) {
   if (!res.ok && res.status !== 204) {
     await parseJson(res, path);
   }
+  try { notifyMutation(path, "DELETE"); } catch {}
 }
 
 export async function fetchSkills(scope) {
@@ -316,6 +338,7 @@ export async function deleteSkill(scope, id) {
   if (!res.ok && res.status !== 204) {
     await parseJson(res, path);
   }
+  try { notifyMutation(path, "DELETE"); } catch {}
 }
 
 export async function saveRuleAssignments(assignments) {
@@ -432,6 +455,14 @@ export async function fetchOpenRouterModels({ force = false, silent = false } = 
   return requestJson(`/api/admin/openrouter/models/${qs}`, { silent });
 }
 
+export async function testOpenRouterChat({ message, model, system_prompt } = {}) {
+  return requestJson("/api/admin/openrouter/chat-test/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, model, system_prompt }),
+  });
+}
+
 export async function fetchPipelineBundle() {
   return requestJson("/api/admin/pipeline-graph/");
 }
@@ -523,6 +554,7 @@ export async function deleteResult(resultId) {
   if (!res.ok && res.status !== 204) {
     await parseJson(res, path);
   }
+  try { notifyMutation(path, "DELETE"); } catch {}
 }
 
 export async function fetchLogs() {
@@ -540,6 +572,7 @@ export async function deleteLog(logId) {
   if (!res.ok && res.status !== 204) {
     await parseJson(res, path);
   }
+  try { notifyMutation(path, "DELETE"); } catch {}
 }
 
 /**

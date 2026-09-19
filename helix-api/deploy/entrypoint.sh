@@ -10,6 +10,8 @@ if [ ! -f /app/helix.config.yaml ] && [ -f /app/helix.config.example.yaml ]; the
   cp /app/helix.config.example.yaml /app/helix.config.yaml
 fi
 
+python manage.py migrate --noinput
+
 exec gunicorn helix.wsgi:application \
   --bind "0.0.0.0:${PORT:-8000}" \
   --workers "${GUNICORN_WORKERS:-2}" \

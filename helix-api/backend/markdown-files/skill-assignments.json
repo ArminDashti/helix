@@ -21,38 +21,33 @@
     "orchester"
   ],
   "shared/understand-database": [
-    "orchester",
-    "guardian",
-    "data-gatherer",
-    "researcher",
-    "validator"
+    "orchester"
   ],
   "shared/generate-analytical-report": [
-    "orchester",
-    "result-builder"
+    "orchester"
   ],
   "guardian/guard-prompt": [
-    "guardian"
+    "orchester"
   ],
   "data-gatherer/gather-data": [
-    "data-gatherer"
+    "orchester"
   ],
   "researcher/conduct-research": [
-    "researcher"
+    "orchester"
   ],
   "researcher/aggregate-research-brief": [
-    "researcher"
+    "orchester"
   ],
   "validator/match-prompt-goal": [
-    "validator"
+    "orchester"
   ],
   "result-builder/build-result": [
-    "result-builder"
+    "orchester"
   ],
   "publisher/publish-result": [
-    "publisher"
+    "orchester"
   ],
   "web-searcher/search-web": [
-    "web-searcher"
+    "orchester"
   ]
 }

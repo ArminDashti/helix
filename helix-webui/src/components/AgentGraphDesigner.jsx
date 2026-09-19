@@ -274,11 +274,8 @@ function AgentGraphDesignerInner({
         const next = { ...e };
         if (partial.kind) {
           next.kind = partial.kind;
-          next.direction = partial.kind === "back" ? "back" : "forward";
-          if (partial.kind === "back") {
-            next.when = e.when?.type === "on_retry" ? e.when : { type: "on_retry" };
-            next.role = "loop";
-          } else if (partial.kind === "forward") {
+          next.direction = "forward";
+          if (partial.kind === "forward") {
             next.when = { type: "always" };
             delete next.role;
           } else if (partial.kind === "result_is") {
