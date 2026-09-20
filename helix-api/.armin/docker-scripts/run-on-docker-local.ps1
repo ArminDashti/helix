@@ -6,7 +6,8 @@
 .DESCRIPTION
   Sample for .armin/docker-scripts/run-on-docker-local.ps1.
   Reads run-on-docker-local.yaml — no CLI -- flags.
-  Builds the image locally and runs docker compose up -d.
+  Rebuilds the image locally, stops the old stack, and recreates
+  containers so restart always runs the fresh image (not a stale one).
 #>
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -40,12 +41,14 @@ CONFIG:
   stack_name          Compose project name (-p)
   image_tag           Image tag for build and compose; overrides compose when set
   compose_file        Compose path relative to .armin/docker-scripts
+  compose_override    Optional second compose file (e.g. docker-compose.dev.yml)
   dockerfile          Dockerfile path relative to .armin/docker-scripts
   docker_network      External Docker network name
   publish_port        Host bind port; overrides compose when set
   internal_port       Container listen port; overrides compose when set
   delete_volume       yes/true/1/y/on → remove volumes before up
   delete_image        yes/true/1/y/on → remove image during teardown
+  skip_build          yes/true/1/y/on → skip docker build (dev overlay image)
 
 NOTES:
   - No CLI -- flags. Change behavior only via YAML.
@@ -132,12 +135,14 @@ try {
     $stackName = Require-Key $cfg 'stack_name'
     $imageTag = Require-Key $cfg 'image_tag'
     $composeFileRel = Require-Key $cfg 'compose_file'
+    $composeOverrideRel = if ($cfg.ContainsKey('compose_override')) { [string]$cfg['compose_override'] } else { '' }
     $dockerfileRel = Require-Key $cfg 'dockerfile'
     $network = Require-Key $cfg 'docker_network'
     $publishPort = if ($cfg.ContainsKey('publish_port')) { [string]$cfg['publish_port'] } else { '' }
     $internalPort = if ($cfg.ContainsKey('internal_port')) { [string]$cfg['internal_port'] } else { '' }
     $deleteVolume = Test-Truthy ($(if ($cfg.ContainsKey('delete_volume')) { [string]$cfg['delete_volume'] } else { 'no' }))
     $deleteImage = Test-Truthy ($(if ($cfg.ContainsKey('delete_image')) { [string]$cfg['delete_image'] } else { 'no' }))
+    $skipBuild = Test-Truthy ($(if ($cfg.ContainsKey('skip_build')) { [string]$cfg['skip_build'] } else { 'no' }))
 
     if (Test-Placeholder $composeFileRel) { throw 'compose_file is still a placeholder.' }
     if (Test-Placeholder $dockerfileRel) { throw 'dockerfile is still a placeholder.' }
@@ -146,20 +151,24 @@ try {
 
     $composePath = Resolve-DeployPath $composeFileRel
     $dockerfile = Resolve-DeployPath $dockerfileRel
+    $composeFileArgs = @('-f', $composePath)
+    if (-not [string]::IsNullOrWhiteSpace($composeOverrideRel) -and -not (Test-Placeholder $composeOverrideRel)) {
+        $overridePath = Resolve-DeployPath $composeOverrideRel
+        $composeFileArgs += @('-f', $overridePath)
+    }
 
-    Write-Step "Stack=$stackName image=$imageTag network=$network publish_port='$publishPort' internal_port='$internalPort' delete_volume=$deleteVolume delete_image=$deleteImage"
+    Write-Step "Stack=$stackName image=$imageTag network=$network publish_port='$publishPort' internal_port='$internalPort' delete_volume=$deleteVolume delete_image=$deleteImage skip_build=$skipBuild override='$composeOverrideRel'"
 
     Ensure-Docker
     Ensure-Network $network
 
-    if ($deleteVolume -or $deleteImage) {
-        Write-Step 'Stopping existing stack'
-        if ($deleteVolume) {
-            docker compose -p $stackName -f $composePath --project-directory $RepoRoot down -v
-        }
-        else {
-            docker compose -p $stackName -f $composePath --project-directory $RepoRoot down
-        }
+    # Always tear down first so a plain restart cannot keep a stale container.
+    Write-Step 'Stopping existing stack'
+    if ($deleteVolume) {
+        docker compose -p $stackName @composeFileArgs --project-directory $RepoRoot down -v
+    }
+    else {
+        docker compose -p $stackName @composeFileArgs --project-directory $RepoRoot down
     }
 
     if ($deleteImage) {
@@ -167,11 +176,16 @@ try {
         cmd /c "docker image rm -f `"$imageTag`" >nul 2>&1"
     }
 
-    Write-Step "Building image $imageTag"
-    docker build -f $dockerfile -t $imageTag $RepoRoot
-    if ($LASTEXITCODE -ne 0) { throw 'docker build failed' }
+    if (-not $skipBuild) {
+        Write-Step "Building image $imageTag"
+        docker build -f $dockerfile -t $imageTag $RepoRoot
+        if ($LASTEXITCODE -ne 0) { throw 'docker build failed' }
+    }
+    else {
+        Write-Step 'Skipping image build (skip_build)'
+    }
 
-    Write-Step 'Starting stack'
+    Write-Step 'Starting stack (force-recreate)'
     $oldImageTag = $env:IMAGE_TAG
     $oldDockerNetwork = $env:DOCKER_NETWORK
     $oldInternalPort = $env:INTERNAL_PORT
@@ -181,7 +195,7 @@ try {
     if (-not [string]::IsNullOrWhiteSpace($internalPort)) { $env:INTERNAL_PORT = $internalPort }
     if (-not [string]::IsNullOrWhiteSpace($publishPort)) { $env:PUBLISH_PORT = $publishPort }
     try {
-        docker compose -p $stackName -f $composePath --project-directory $RepoRoot up -d
+        docker compose -p $stackName @composeFileArgs --project-directory $RepoRoot up -d --force-recreate --remove-orphans
         if ($LASTEXITCODE -ne 0) { throw 'docker compose up failed' }
     }
     finally {

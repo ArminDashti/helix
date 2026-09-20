@@ -1,7 +1,7 @@
 # Local Docker hot-reload: SQLite Django + Vite WebUI (bind mounts).
 # Usage: ..\scripts\install-local-docker.ps1
 #   or: docker compose -f docker-compose.local.yml -p helix up -d --build
-name: helix
+name: helix-local
 services:
   api:
     build:
@@ -20,8 +20,14 @@ services:
       HELIX_DJANGO_SQLITE_PATH: /app/backend/data/helix-django.sqlite3
       HELIX_CORS_ORIGINS: "http://127.0.0.1:5178,http://localhost:5178,http://helix.local,http://pc-armin"
       PORT: "8000"
+      # Bind-mount mtimes on Windows Docker: force polling reloader.
+      WATCHFILES_FORCE_POLLING: "true"
       OPENROUTER_TOKEN: ${OPENROUTER_TOKEN:-}
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      CURSOR_AGENT_BIN: ${CURSOR_AGENT_BIN:-cursor-agent}
+      CURSOR_AUTH_FILE: ${CURSOR_AUTH_FILE:-/run/cursor-auth/auth.json}
+      HOST_WORKSPACE_ROOT: ${HOST_WORKSPACE_ROOT:-C:/Users}
+      HOST_WORKSPACE_MOUNT: ${HOST_WORKSPACE_MOUNT:-/host}
     entrypoint: []
     command:
       - sh
@@ -31,12 +37,14 @@ services:
       - .:/app
       - helix-pip-cache:/root/.cache/pip
       - helix-sqlite-data:/app/backend/data
+      - ${HOST_WORKSPACE_ROOT:-C:/Users}:${HOST_WORKSPACE_MOUNT:-/host}
+      - ${HOST_CURSOR_AUTH_FILE:-C:/Users/armin/AppData/Roaming/Cursor/auth.json}:/run/cursor-auth/auth.json:ro
     ports:
       - "8173:8000"
 
   webui:
     image: node:22-alpine
-    container_name: helix-webui
+    container_name: cursor-helix-webui
     restart: "no"
     working_dir: /app
     environment:
@@ -45,6 +53,8 @@ services:
       VITE_API_PROXY: http://api:8000
       VITE_API_BASE_URL: ""
       VITE_BASE_PATH: /helix/
+      # Browser hits host :5178; HMR websocket must use that port.
+      VITE_HMR_CLIENT_PORT: "5178"
     command:
       - sh
       - -c
@@ -58,9 +68,13 @@ services:
       - api
 
 volumes:
+  # external: reuse fixed names across projects; install creates if missing
   helix-sqlite-data:
     name: helix-sqlite-data
+    external: true
   helix-pip-cache:
     name: helix-pip-cache
+    external: true
   helix-webui-node-modules:
     name: helix-webui-node-modules
+    external: true

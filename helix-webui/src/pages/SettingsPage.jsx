@@ -313,6 +313,10 @@ export default function SettingsPage() {
     () => [
       { value: "openrouter", label: t("settings.apiOpenrouter") },
       { value: "openai_compatible", label: t("settings.apiOpenaiCompatible") },
+      {
+        value: "cursor_headless_cli",
+        label: t("settings.apiCursorHeadlessCli"),
+      },
     ],
     [t],
   );
@@ -337,6 +341,10 @@ export default function SettingsPage() {
   const { checkConnection } = useApiStatus();
 
   const activeTokenConfigured = Boolean(orForm.token_configured);
+  const isCursorCli = provider === "cursor_headless_cli";
+  const llmReady = isCursorCli
+    ? Boolean((orForm.workspace || "").trim())
+    : activeTokenConfigured;
 
   async function reloadSampleTiers() {
     try {
@@ -462,7 +470,9 @@ export default function SettingsPage() {
           const providerData = await fetchProviderSettings();
           const raw = providerData.provider;
           const nextProvider =
-            raw === "openai_compatible" ? raw : "openrouter";
+            raw === "openai_compatible" || raw === "cursor_headless_cli"
+              ? raw
+              : "openrouter";
           setProvider(nextProvider);
           anyOk = true;
         } catch (err) {
@@ -509,7 +519,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (loading) return;
-    if (!activeTokenConfigured) {
+    if (!llmReady) {
       setModels([]);
       setModelsError(null);
       setModelsLoading(false);
@@ -536,7 +546,7 @@ export default function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [loading, activeTokenConfigured, t]);
+  }, [loading, llmReady, t]);
 
   function defaultPortForEngine(engine) {
     if (engine === "sqlserver") return 1433;
@@ -684,14 +694,16 @@ export default function SettingsPage() {
     setStatus(null);
     try {
       const payload = {
-        base_url: (orForm.base_url || "").trim(),
         default_model: orForm.default_model,
         agents: orForm.agents,
         workspace: (orForm.workspace || "").trim(),
-        mode: (orForm.mode || "").trim(),
+        mode: "agent",
       };
-      if (orForm.token?.trim()) {
-        payload.token = orForm.token.trim();
+      if (!isCursorCli) {
+        payload.base_url = (orForm.base_url || "").trim();
+        if (orForm.token?.trim()) {
+          payload.token = orForm.token.trim();
+        }
       }
       const data = await saveOpenRouterSettings(payload);
       const providerData = await saveProvider(provider);
@@ -699,7 +711,7 @@ export default function SettingsPage() {
       setOrForm({ ...EMPTY_OPENROUTER, ...data.openrouter, token: "" });
       setStatus(t("settings.llmSaved"));
       checkConnection({ silent: true });
-      if (data.openrouter?.token_configured) {
+      if (isCursorCli || data.openrouter?.token_configured) {
         await refreshModels({ tokenConfigured: true });
       }
     } catch (err) {
@@ -708,9 +720,15 @@ export default function SettingsPage() {
   }
 
   async function refreshModels({
-    tokenConfigured = activeTokenConfigured,
+    tokenConfigured = llmReady,
   } = {}) {
-    if (!tokenConfigured && !(orForm.token || "").trim()) {
+    if (!tokenConfigured && !(orForm.token || "").trim() && !isCursorCli) {
+      setModels([]);
+      setModelsError(null);
+      setModelsLoading(false);
+      return;
+    }
+    if (isCursorCli && !(orForm.workspace || "").trim()) {
       setModels([]);
       setModelsError(null);
       setModelsLoading(false);
@@ -901,7 +919,7 @@ export default function SettingsPage() {
               type="button"
               icon={RefreshCw}
               onClick={() => refreshModels()}
-              disabled={modelsLoading || !activeTokenConfigured}
+              disabled={modelsLoading || !llmReady}
               className="rounded-lg border border-line bg-fog px-3 py-1.5 text-xs font-medium hover:bg-fog/80 disabled:opacity-50"
             >
               {t("settings.refreshModels")}
@@ -909,7 +927,7 @@ export default function SettingsPage() {
           </div>
           <p className="text-sm text-muted">{t("settings.llmIntro")}</p>
 
-          <Field label={t("settings.api")} id="llm_api">
+          <Field label={t("settings.connector")} id="llm_api">
             <select
               id="llm_api"
               value={provider}
@@ -924,20 +942,22 @@ export default function SettingsPage() {
             </select>
           </Field>
 
-          <Field label={t("settings.baseUrl")} id="llm_base_url">
-            <input
-              id="llm_base_url"
-              value={orForm.base_url || ""}
-              onChange={(e) => updateOrField("base_url", e.target.value)}
-              className={inputClass}
-              placeholder={
-                provider === "openrouter"
-                  ? OPENROUTER_BASE_URL
-                  : t("settings.baseUrlPlaceholder")
-              }
-              spellCheck={false}
-            />
-          </Field>
+          {!isCursorCli ? (
+            <Field label={t("settings.baseUrl")} id="llm_base_url">
+              <input
+                id="llm_base_url"
+                value={orForm.base_url || ""}
+                onChange={(e) => updateOrField("base_url", e.target.value)}
+                className={inputClass}
+                placeholder={
+                  provider === "openrouter"
+                    ? OPENROUTER_BASE_URL
+                    : t("settings.baseUrlPlaceholder")
+                }
+                spellCheck={false}
+              />
+            </Field>
+          ) : null}
 
           <Field label={t("settings.workspace")} id="llm_workspace">
             <input
@@ -947,31 +967,40 @@ export default function SettingsPage() {
               className={inputClass}
               placeholder={t("settings.workspacePlaceholder")}
               spellCheck={false}
-            />
-          </Field>
-          <p className="text-xs text-muted">{t("settings.workspaceHint")}</p>
-
-          <Field label={t("settings.apiKey")} id="llm_token">
-            <input
-              id="llm_token"
-              type="password"
-              autoComplete="off"
-              value={orForm.token || ""}
-              onChange={(e) => updateOrField("token", e.target.value)}
-              className={inputClass}
-              placeholder={
-                activeTokenConfigured
-                  ? t("settings.apiKeySavedPlaceholder")
-                  : t("settings.apiKeyPastePlaceholder")
-              }
-              spellCheck={false}
+              required={isCursorCli}
             />
           </Field>
           <p className="text-xs text-muted">
-            {activeTokenConfigured
-              ? t("settings.apiKeySavedHint")
-              : t("settings.apiKeyPasteHint")}
+            {isCursorCli
+              ? t("settings.workspaceHintCursorCli")
+              : t("settings.workspaceHint")}
           </p>
+
+          {!isCursorCli ? (
+            <>
+              <Field label={t("settings.apiKey")} id="llm_token">
+                <input
+                  id="llm_token"
+                  type="password"
+                  autoComplete="off"
+                  value={orForm.token || ""}
+                  onChange={(e) => updateOrField("token", e.target.value)}
+                  className={inputClass}
+                  placeholder={
+                    activeTokenConfigured
+                      ? t("settings.apiKeySavedPlaceholder")
+                      : t("settings.apiKeyPastePlaceholder")
+                  }
+                  spellCheck={false}
+                />
+              </Field>
+              <p className="text-xs text-muted">
+                {activeTokenConfigured
+                  ? t("settings.apiKeySavedHint")
+                  : t("settings.apiKeyPasteHint")}
+              </p>
+            </>
+          ) : null}
 
           {modelsError ? (
             <p className="rounded-xl border border-warn-border bg-warn-bg px-4 py-2 text-sm text-warn">

@@ -49,3 +49,7 @@ This project is indexed by GitNexus as **helix** (2225 symbols, 6760 relationshi
 lean-ctx is active — the MCP tools replace native equivalents.
 Full rules: LEAN-CTX.md (open on demand — do not auto-load).
 <!-- /lean-ctx -->
+
+## Learned User Preferences
+
+- Cursor headless CLI (`cursor_headless_cli` / `agent -p`) must always run in Agent mode — never ask or plan.

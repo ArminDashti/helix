@@ -30,7 +30,18 @@ AGENT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TOKEN_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_OPENROUTER_TOKEN_ENV = "OPENROUTER_TOKEN"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-VALID_PROVIDERS = ("openrouter", "openai_compatible")
+PROVIDER_CURSOR_HEADLESS_CLI = "cursor_headless_cli"
+VALID_PROVIDERS = ("openrouter", "openai_compatible", PROVIDER_CURSOR_HEADLESS_CLI)
+
+
+def _normalize_llm_mode(value: Any) -> str:
+    """Cursor headless / proxy mode — Agent only (ask/plan are non-executing)."""
+    mode = str(value or "").strip().lower()
+    if mode in ("", "agent"):
+        return "agent"
+    # Coerce ask/plan (and any unknown) to agent.
+    return "agent"
+
 
 DEFAULT_DATABASE = {
     # Built-in AdventureWorks LT sample SQLite (seeded on first start).
@@ -602,6 +613,23 @@ def fetch_openrouter_models(*, force: bool = False) -> list[dict[str, str]]:
     Returns list of {id, name}. Raises ValueError if token/base URL missing or request fails.
     """
     now = time.time()
+    if get_provider() == PROVIDER_CURSOR_HEADLESS_CLI:
+        from .llm_client import list_cursor_cli_models
+
+        cache_key = "cursor_headless_cli"
+        if (
+            not force
+            and _MODELS_CACHE["models"]
+            and _MODELS_CACHE.get("base_url") == cache_key
+            and (now - float(_MODELS_CACHE["fetched_at"])) < _MODELS_CACHE_TTL_SEC
+        ):
+            return list(_MODELS_CACHE["models"])
+        models = _catalog_with_auto(list_cursor_cli_models())
+        _MODELS_CACHE["fetched_at"] = now
+        _MODELS_CACHE["models"] = models
+        _MODELS_CACHE["base_url"] = cache_key
+        return list(models)
+
     base_url = get_llm_base_url()
     if (
         not force
@@ -703,7 +731,7 @@ def get_openrouter_settings() -> dict[str, Any]:
     else:
         base_url = ""
     workspace = str(raw.get("workspace") or "").strip()
-    mode = str(raw.get("mode") or "").strip()
+    mode = _normalize_llm_mode(raw.get("mode"))
     return {
         "base_url": base_url,
         "app_name": (
@@ -740,9 +768,9 @@ def update_openrouter_settings(payload: dict[str, Any]) -> dict[str, Any]:
     stored_workspace = str(raw.get("workspace") or "").strip()
     if "workspace" in payload:
         stored_workspace = str(payload.get("workspace") or "").strip()
-    stored_mode = str(raw.get("mode") or "").strip()
+    stored_mode = _normalize_llm_mode(raw.get("mode"))
     if "mode" in payload:
-        stored_mode = str(payload.get("mode") or "").strip()
+        stored_mode = _normalize_llm_mode(payload.get("mode"))
     if "app_name" in payload:
         value = payload["app_name"]
         current["app_name"] = (
@@ -809,7 +837,7 @@ def update_provider(provider: str) -> str:
     value = (provider or "").strip().lower()
     if value not in VALID_PROVIDERS:
         raise ValueError(
-            "provider must be openrouter or openai_compatible"
+            "provider must be openrouter, openai_compatible, or cursor_headless_cli"
         )
     data = load_config()
     data["provider"] = value

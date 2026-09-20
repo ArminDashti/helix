@@ -14,15 +14,28 @@ services:
       HELIX_DEBUG: "false"
       HELIX_DJANGO_ENGINE: sqlite
       HELIX_DJANGO_SQLITE_PATH: /app/backend/data/helix-django.sqlite3
-      HELIX_CORS_ORIGINS: "http://helix.local,http://pc-armin,http://127.0.0.1:8081,http://localhost:8081"
+      HELIX_CORS_ORIGINS: "http://helix.local,http://pc-armin,http://127.0.0.1:8181,http://localhost:8181"
       GUNICORN_TIMEOUT: "660"
       OPENROUTER_TOKEN: ${OPENROUTER_TOKEN:-}
       CURSOR_API_KEY: ${CURSOR_API_KEY:-}
+      CURSOR_AGENT_BIN: ${CURSOR_AGENT_BIN:-cursor-agent}
+      CURSOR_AUTH_FILE: ${CURSOR_AUTH_FILE:-/run/cursor-auth/auth.json}
+      HOST_WORKSPACE_ROOT: ${HOST_WORKSPACE_ROOT:-C:/Users}
+      HOST_WORKSPACE_MOUNT: ${HOST_WORKSPACE_MOUNT:-/host}
       PORT: "${INTERNAL_PORT:-8000}"
     volumes:
       - ./backend/markdown-files:/app/backend/markdown-files
       - ./helix.config.yaml:/app/helix.config.yaml
       - helix-sqlite-data:/app/backend/data
+      # Host folders for cursor-agent --workspace (Settings keep host paths).
+      - ${HOST_WORKSPACE_ROOT:-C:/Users}:${HOST_WORKSPACE_MOUNT:-/host}
+      # Host Cursor IDE login session (same auth as IDE — not an API key).
+      - ${HOST_CURSOR_AUTH_FILE:-C:/Users/armin/AppData/Roaming/Cursor/auth.json}:/run/cursor-auth/auth.json:ro
+    # Windows hosts maps *.local → 127.0.0.1; Docker Desktop injects that into
+    # containers and breaks nginx-gateway's pc-armin-local DNS alias. Force the
+    # host gateway so http://cursor-headless-cli-to-api.local/v1 hits nginx :80.
+    extra_hosts:
+      - "cursor-headless-cli-to-api.local:host-gateway"
     expose:
       - "${INTERNAL_PORT:-8000}"
     ports:
@@ -32,6 +45,7 @@ services:
     networks:
       - helix-net
       - t3-net
+      - pc-armin-local
 
 volumes:
   helix-sqlite-data:
@@ -41,4 +55,6 @@ networks:
     name: ${DOCKER_NETWORK:-helix-net}
     external: true
   t3-net:
+    external: true
+  pc-armin-local:
     external: true

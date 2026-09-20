@@ -1,0 +1,26 @@
+# Local-only overlay: bind-mount source + Django runserver (hot reload).
+# Used by run-on-docker-local / redeploy-stack — NOT by run-on-docker-server.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml -p helix up -d --force-recreate
+name: helix
+services:
+  helix-api:
+    environment:
+      HELIX_DEBUG: "true"
+      PYTHONUNBUFFERED: "1"
+      # Windows Docker bind mounts often miss native FS events.
+      WATCHFILES_FORCE_POLLING: "true"
+      CURSOR_AGENT_BIN: ${CURSOR_AGENT_BIN:-cursor-agent}
+      CURSOR_AUTH_FILE: ${CURSOR_AUTH_FILE:-/run/cursor-auth/auth.json}
+      HOST_WORKSPACE_ROOT: ${HOST_WORKSPACE_ROOT:-C:/Users}
+      HOST_WORKSPACE_MOUNT: ${HOST_WORKSPACE_MOUNT:-/host}
+    entrypoint: []
+    command:
+      - sh
+      - -c
+      - pip install -q -r backend/requirements.txt && cd backend && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+      - helix-sqlite-data:/app/backend/data
+      - ${HOST_WORKSPACE_ROOT:-C:/Users}:${HOST_WORKSPACE_MOUNT:-/host}
+      - ${HOST_CURSOR_AUTH_FILE:-C:/Users/armin/AppData/Roaming/Cursor/auth.json}:/run/cursor-auth/auth.json:ro

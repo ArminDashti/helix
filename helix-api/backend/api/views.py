@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator
 
 from django.http import HttpRequest, HttpResponse, JsonResponse, StreamingHttpResponse
@@ -50,7 +51,7 @@ from .pipeline_graph import (
     reset_pipeline_bundle,
     update_pipeline_bundle,
 )
-from .llm_client import require_llm
+from .llm_client import is_usable_workspace, require_llm
 from . import org
 from .pipeline_run import pipeline_events, run_pipeline_sync
 
@@ -157,20 +158,33 @@ def health(request: HttpRequest) -> JsonResponse:
                 "detail": str(exc),
             }
 
-    if get_openrouter_token():
-        openrouter: dict[str, Any] = {"status": "configured", "detail": ""}
-    else:
+    provider = get_provider()
+    if provider == "cursor_headless_cli":
+        workspace = str(get_openrouter_settings().get("workspace") or "").strip()
+        if not workspace:
+            llm = {"status": "not_configured", "detail": "Workspace path is not set"}
+        elif not is_usable_workspace(workspace):
+            llm = {
+                "status": "disconnected",
+                "detail": f"Workspace must be an absolute host machine folder: {workspace}",
+            }
+        else:
+            llm = {"status": "configured", "detail": ""}
+        openrouter = {
+            "status": "configured" if workspace else "not_configured",
+            "detail": "" if workspace else "Workspace path is not set",
+        }
+    elif not get_openrouter_token():
         openrouter = {
             "status": "missing_token",
             "detail": "API key is not set",
         }
-
-    provider = get_provider()
-    if not get_openrouter_token():
         llm = {"status": "missing_token", "detail": "API key is not set"}
     elif provider == "openai_compatible" and not get_llm_base_url():
+        openrouter = {"status": "configured", "detail": ""}
         llm = {"status": "not_configured", "detail": "Base URL is not set"}
     else:
+        openrouter = {"status": "configured", "detail": ""}
         llm = {"status": "configured", "detail": ""}
 
     ok = database.get("status") == "connected"
@@ -539,7 +553,7 @@ def admin_openrouter_chat_test(request: HttpRequest) -> JsonResponse:
     except ValueError as exc:
         msg = str(exc)
         # map auth/config to 400, upstream to 502
-        if "is not set" in msg or "Base URL" in msg or "API key" in msg:
+        if "is not set" in msg or "Base URL" in msg or "API key" in msg or "Workspace" in msg or "Cursor agent" in msg:
             return _error(msg, status=400)
         if "timed out" in msg.lower():
             return _error(msg, status=504)

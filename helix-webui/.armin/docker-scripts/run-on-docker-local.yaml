@@ -1,9 +1,11 @@
 stack_name: helix
 image_tag: helix-webui:latest
 compose_file: ../../docker-compose.yml
+compose_override: ../../docker-compose.dev.yml
 dockerfile: ../../dockerfile
 docker_network: helix-net
 internal_port: "80"
-publish_port: "8081"
+publish_port: "8181"
 delete_volume: "no"
-delete_image: "yes"
+delete_image: "no"
+skip_build: "yes"

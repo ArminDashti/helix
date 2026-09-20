@@ -1,6 +1,7 @@
 stack_name: helix
 image_tag: helix-api:latest
 compose_file: ../../docker-compose.yml
+compose_override: ../../docker-compose.dev.yml
 dockerfile: ../../dockerfile
 docker_network: helix-net
 internal_port: "8000"

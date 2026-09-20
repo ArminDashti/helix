@@ -5,6 +5,7 @@
 
 # Local secrets / config (use helix.config.example.yaml as the template)
 helix.config.yaml
+.env
 backend/markdown-files/results.json
 backend/markdown-files/logs.json
 

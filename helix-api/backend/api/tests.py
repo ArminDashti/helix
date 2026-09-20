@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -393,6 +394,49 @@ class LlmSettingsTests(SimpleTestCase):
                 with self.assertRaises(ValueError):
                     update_provider("cursor")
 
+    def test_cursor_headless_cli_provider_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "helix.config.yaml"
+            workspace = Path(tmp) / "ws"
+            workspace.mkdir()
+            with override_settings(HELIX_CONFIG_PATH=str(config_path)):
+                save_config(
+                    {
+                        "provider": "cursor_headless_cli",
+                        "openrouter": {"workspace": str(workspace)},
+                    }
+                )
+                self.assertEqual(get_provider(), "cursor_headless_cli")
+                self.assertEqual(update_provider("cursor_headless_cli"), "cursor_headless_cli")
+                settings = get_openrouter_settings()
+                self.assertEqual(settings["workspace"], str(workspace))
+
+    def test_host_workspace_path_is_usable_without_local_dir(self):
+        from .llm_client import is_usable_workspace
+
+        self.assertTrue(is_usable_workspace("C:/Users/armin/GitHub/helix"))
+        self.assertTrue(is_usable_workspace(r"\\server\share\proj"))
+        self.assertFalse(is_usable_workspace("relative/path"))
+
+    def test_map_host_workspace_rewrites_under_root(self):
+        from . import llm_client
+
+        with patch.dict(
+            os.environ,
+            {
+                "HOST_WORKSPACE_ROOT": "C:/Users",
+                "HOST_WORKSPACE_MOUNT": "/host",
+            },
+            clear=False,
+        ):
+            # Path must not exist on this machine so rewrite applies (Docker case).
+            mapped = llm_client.map_host_workspace("C:/Users/nobody/proj-xyz")
+            self.assertEqual(mapped, "/host/nobody/proj-xyz")
+            self.assertEqual(
+                llm_client.map_host_workspace("D:/other/proj"),
+                "D:/other/proj",
+            )
+
     def test_openai_compatible_requires_stored_base_url(self):
         with tempfile.TemporaryDirectory() as tmp:
             config_path = Path(tmp) / "helix.config.yaml"
@@ -417,18 +461,22 @@ class LlmSettingsTests(SimpleTestCase):
                 update_openrouter_settings(
                     {
                         "workspace": "C:/Users/armin/GitHub/helix",
-                        "mode": "ask",
+                        "mode": "agent",
                     }
                 )
                 settings = get_openrouter_settings()
                 self.assertEqual(
                     settings["workspace"], "C:/Users/armin/GitHub/helix"
                 )
-                self.assertEqual(settings["mode"], "ask")
+                self.assertEqual(settings["mode"], "agent")
+                # ask/plan coerce to agent on read/write
+                update_openrouter_settings({"mode": "ask"})
+                self.assertEqual(get_openrouter_settings()["mode"], "agent")
                 raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
                 self.assertEqual(
                     raw["openrouter"]["workspace"], "C:/Users/armin/GitHub/helix"
                 )
+                self.assertEqual(raw["openrouter"]["mode"], "agent")
 
     def test_openrouter_defaults_base_url_and_saves_custom(self):
         with tempfile.TemporaryDirectory() as tmp:

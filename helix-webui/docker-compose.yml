@@ -21,7 +21,7 @@ services:
       - "${INTERNAL_PORT:-80}"
     ports:
       - target: ${INTERNAL_PORT:-80}
-        published: ${PUBLISH_PORT-8081}
+        published: ${PUBLISH_PORT-8181}
         protocol: tcp
     networks:
       - helix-net

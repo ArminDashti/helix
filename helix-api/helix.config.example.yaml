@@ -7,7 +7,7 @@
 # - openrouter / openai_compatible: OpenAI-compatible chat via openrouter.base_url
 # openrouter.base_url defaults to https://openrouter.ai/api/v1 for OpenRouter.
 # For Cursor OpenAI proxies (chat/completions), set openrouter.workspace to an
-# absolute host path; optional mode: ask | agent | plan (default ask when set).
+# absolute host path; mode is always agent (ask/plan are rejected/coerced).
 provider: openrouter
 
 # Models are suggestions only — use any model ids your host accepts.
@@ -19,7 +19,7 @@ openrouter:
   app_name: "Helix"
   default_model: "composer-2.5"
   # workspace: "C:/path/to/project"  # required by some Cursor OpenAI proxies
-  # mode: ask
+  # mode: agent  # only agent is allowed; ask/plan coerce to agent
   # Per chat/completions call; pipeline agents can exceed 90s with large prompts.
   timeout_seconds: 600
   agents:
