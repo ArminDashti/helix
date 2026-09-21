@@ -227,14 +227,18 @@ def _persist_failure(
     path: str = "",
     status_code: int | None = None,
 ) -> dict[str, Any]:
+    from .agents import resolve_agent_definition_id
+
+    raw_id = str(agent_id or "")
+    definition_id = resolve_agent_definition_id(raw_id) if raw_id else ""
     return logs_store.append_error(
         kind=kind or logs_store.classify_error_kind(message),
         message=message,
         prompt=str(ctx.get("prompt") or ""),
         mode=str(ctx.get("mode") or ""),
         language=str(ctx.get("language") or "en"),
-        agent_id=agent_id or "",
-        node_id=agent_id or "",
+        agent_id=definition_id or raw_id,
+        node_id=raw_id,
         sql=_sql_from_ctx(ctx),
         path=path,
         status_code=status_code,
@@ -399,7 +403,7 @@ def _package_result(ctx: dict[str, Any]) -> dict[str, Any]:
     text_report = ctx.get("text_report")
     if not text_report:
         artifacts = ctx.get("artifacts") or {}
-        for key in ("orchester", "result-builder", "publisher"):
+        for key in ("final-approver", "orchester", "result-builder", "publisher"):
             pub = artifacts.get(key) or {}
             text_report = pub.get("text")
             if text_report:
@@ -650,7 +654,13 @@ def _assistant_message_for_history(message: dict[str, Any]) -> dict[str, Any]:
 
 
 def _orchester_events(ctx: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """Yield step events; set ctx['_orchester_outcome'] = (status, message)."""
+    """Yield step events from the LangGraph four-agent pipeline."""
+    from .pipeline_langgraph import langgraph_events
+
+    yield from langgraph_events(ctx)
+    return
+
+    # Legacy single-agent tool loop kept below for reference / emergency rollback.
     language = ctx.get("language") or "en"
     blocked = _guardian_hard_block(str(ctx.get("prompt") or ""), ctx.get("actor") or {})
     if blocked:

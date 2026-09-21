@@ -65,14 +65,17 @@ class PipelineAgentTests(SimpleTestCase):
                 self.assertNotIn(victim, ids_after)
 
 
-class SixAgentPipelineTests(SimpleTestCase):
-    def test_default_flow_uses_single_orchester_step(self):
+class FourAgentPipelineTests(SimpleTestCase):
+    def test_default_flow_uses_four_agent_spine(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow
 
         graph = compile_pipeline_flow(default_pipeline_flow())
         self.assertEqual(graph["entry"], "orchester")
         node_ids = [node["id"] for node in graph["nodes"]]
-        self.assertEqual(node_ids, ["orchester"])
+        self.assertEqual(
+            node_ids,
+            ["orchester", "guardian", "researcher", "final-approver"],
+        )
 
     def test_guardian_blocks_write_prompt(self):
         from .pipeline_run import _guardian_hard_block
@@ -107,7 +110,7 @@ class SixAgentPipelineTests(SimpleTestCase):
         self.assertIn("YEAR(TarikhFaktor) = 1405", hint)
         self.assertIn("N'کرمان'", hint)
 
-    def test_orchester_tool_loop_execute_then_submit(self):
+    def test_langgraph_pipeline_gather_then_approve(self):
         from . import markdown_store as store
         from .pipeline_run import _run_orchester
 
@@ -121,59 +124,71 @@ class SixAgentPipelineTests(SimpleTestCase):
             "step_log": [],
             "pipeline_started": 0,
         }
-        calls = {"n": 0}
+        by_agent: dict[str, int] = {}
 
         def fake_chat(agent_id, messages, tools=None):
-            calls["n"] += 1
-            if calls["n"] == 1:
+            by_agent[agent_id] = by_agent.get(agent_id, 0) + 1
+            n = by_agent[agent_id]
+            if agent_id == "guardian":
                 return {
                     "role": "assistant",
-                    "content": None,
-                    "tool_calls": [
-                        {
-                            "id": "call_sql",
-                            "type": "function",
-                            "function": {
-                                "name": "execute_select",
-                                "arguments": '{"sql":"SELECT TOP 1 1 AS n"}',
-                            },
-                        }
-                    ],
+                    "content": '{"result":"pass","message":"allowed"}',
                 }
-            return {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "call_done",
-                        "type": "function",
-                        "function": {
-                            "name": "submit_result",
-                            "arguments": (
-                                '{"text_report":"One row returned.","message":"ok"}'
-                            ),
-                        },
+            if agent_id == "researcher":
+                if n == 1:
+                    return {
+                        "role": "assistant",
+                        "content": None,
+                        "tool_calls": [
+                            {
+                                "id": "call_sql",
+                                "type": "function",
+                                "function": {
+                                    "name": "execute_select",
+                                    "arguments": '{"sql":"SELECT TOP 1 1 AS n"}',
+                                },
+                            }
+                        ],
                     }
-                ],
-            }
+                return {
+                    "role": "assistant",
+                    "content": (
+                        '{"goals":"top products","what_was_done":'
+                        '"SELECT returned 1 row","message":"gathered"}'
+                    ),
+                }
+            if agent_id == "final-approver":
+                return {
+                    "role": "assistant",
+                    "content": (
+                        '{"result":"pass","gaps":[],'
+                        '"text_report":"One row returned.",'
+                        '"message":"ok"}'
+                    ),
+                }
+            return {"role": "assistant", "content": "{}"}
 
-        with patch("api.pipeline_run.complete_chat_messages", side_effect=fake_chat):
+        with patch(
+            "api.pipeline_langgraph.complete_chat_messages", side_effect=fake_chat
+        ):
             with patch("api.pipeline_run.execute_select") as exe:
                 exe.return_value = {
                     "sql": "SELECT TOP 1 1 AS n",
                     "columns": ["n"],
                     "rows": [{"n": 1}],
                 }
-                with patch.object(store, "assemble_agent_prompt", return_value="system"):
+                with patch.object(
+                    store, "assemble_agent_prompt", return_value="system"
+                ):
                     status, message = _run_orchester(ctx)
         self.assertEqual(status, "done")
         self.assertIn("ok", message.lower())
         self.assertIsNotNone(ctx.get("final_payload"))
         self.assertEqual(ctx["final_payload"]["text_report"], "One row returned.")
-        self.assertEqual(calls["n"], 2)
+        self.assertGreaterEqual(by_agent.get("researcher", 0), 1)
+        self.assertGreaterEqual(by_agent.get("final-approver", 0), 1)
 
     def test_orchester_sql_error_stays_in_tool_result(self):
-        from . import markdown_store as store
         from .pipeline_run import _dispatch_tool
 
         ctx = {
@@ -216,7 +231,7 @@ class SixAgentPipelineTests(SimpleTestCase):
             "artifacts": {},
             "step_log": [],
         }
-        with patch("api.pipeline_run.complete_chat_messages") as chat:
+        with patch("api.pipeline_langgraph.complete_chat_messages") as chat:
             status, message = _run_orchester(ctx)
         chat.assert_not_called()
         self.assertEqual(status, "fail")
@@ -226,12 +241,11 @@ class SixAgentPipelineTests(SimpleTestCase):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, next_edge
 
         graph = compile_pipeline_flow(default_pipeline_flow())
-        # Single-try: orchester has no self-retry circuit
         edge = next_edge(graph, "orchester", "fail", {})
         self.assertIsNone(edge)
         self.assertEqual(graph["entry"], "orchester")
 
-    def test_default_edge_limit_is_five(self):
+    def test_default_edge_limit_is_one(self):
         from .pipeline_graph import DEFAULT_EDGE_LIMIT, compile_pipeline_flow, default_pipeline_flow
 
         self.assertEqual(DEFAULT_EDGE_LIMIT, 1)
@@ -239,7 +253,7 @@ class SixAgentPipelineTests(SimpleTestCase):
         for edge in graph.get("edges") or []:
             self.assertLessEqual(edge.get("limit", DEFAULT_EDGE_LIMIT), 1)
 
-    def test_research_flow_matches_default_orchester_seed(self):
+    def test_research_flow_matches_default_seed(self):
         from .pipeline_graph import compile_pipeline_flow, default_pipeline_flow, research_pipeline_flow
 
         default_graph = compile_pipeline_flow(default_pipeline_flow())
@@ -250,8 +264,14 @@ class SixAgentPipelineTests(SimpleTestCase):
             [n["id"] for n in default_graph["nodes"]],
         )
 
-    def test_orchester_registered_in_roster(self):
-        self.assertIn("orchester", AGENT_IDS)
+    def test_four_agents_registered_in_roster(self):
+        for agent_id in (
+            "orchester",
+            "guardian",
+            "researcher",
+            "final-approver",
+        ):
+            self.assertIn(agent_id, AGENT_IDS)
 
     def test_web_searcher_registered_as_sub_agent(self):
         from .agents import SUB_AGENT_IDS, is_sub_agent
@@ -272,18 +292,19 @@ class SixAgentPipelineTests(SimpleTestCase):
                     "entry": "web-searcher",
                     "nodes": [
                         {"id": "web-searcher", "position": {"x": 0, "y": 0}},
-                        {"id": "publisher", "position": {"x": 0, "y": 100}},
+                        {"id": "orchester", "position": {"x": 0, "y": 100}},
                     ],
                     "edges": [
                         {
                             "id": "e1",
                             "source": "web-searcher",
-                            "target": "publisher",
+                            "target": "orchester",
                             "when": {"type": "always"},
                         }
                     ],
                 }
             )
+        self.assertEqual(graph["entry"], "orchester")
         self.assertNotIn("web-searcher", [n["id"] for n in graph["nodes"]])
 
     def test_web_searcher_prompt_excludes_warehouse(self):
@@ -862,8 +883,8 @@ class LogsCollectionTests(SimpleTestCase):
                             "message": "Received prompt",
                         },
                         {
-                            "agent_id": "data-gatherer",
-                            "node_id": "data-gatherer__1",
+                            "agent_id": "researcher",
+                            "node_id": "researcher__1",
                             "status": "failed",
                             "message": "Bad SQL",
                         },
@@ -873,12 +894,12 @@ class LogsCollectionTests(SimpleTestCase):
                     item = _persist_failure(
                         "Agent failed",
                         ctx=ctx,
-                        agent_id="data-gatherer__1",
+                        agent_id="researcher__1",
                         kind="sql",
                     )
                 self.assertEqual(item["run_id"], "run-xyz")
-                self.assertEqual(item["node_id"], "data-gatherer__1")
-                self.assertEqual(item["agent_id"], "data-gatherer")
+                self.assertEqual(item["node_id"], "researcher__1")
+                self.assertEqual(item["agent_id"], "researcher")
                 self.assertEqual(item["detail"], "Underlying SQL syntax error")
                 self.assertEqual(item["duration_s"], 5.25)
                 self.assertEqual(len(item["steps"]), 2)

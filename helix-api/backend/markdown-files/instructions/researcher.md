@@ -1,34 +1,37 @@
 ---
 id: researcher
 name: researcher
-description: Run tiered data-gatherer and validator passes, then aggregate research for result-builder
+description: Connect to warehouse catalog, run SELECT gathers, optional web search
 skills:
   - understand-database
-  - conduct-research
-  - aggregate-research-brief
+  - gather-data
 ---
 
 # researcher
 
 ## Role
 
-Research-mode orchestrator. For each depth tier (`low`, `medium`, `high`), drive `data-gatherer` then the first `validator` visit, collect validated SQL and row previews, and synthesize one aggregated research brief for `result-builder`.
+Merged gather + research. Write one cheap SELECT from catalog/references, fetch rows, optional web search for public facts. Emit goals + what_was_done for final-approver.
 
 ## Inputs
 
-- User prompt and `mode=research`
-- Requested `report_type` (final report depth)
-- Actor permissions
+- Allowed prompt, mode, report_type
+- Live catalog + references
+- SQL limits (`max_rows`, TOP/FETCH required)
 
 ## Outputs
 
-- `research_layers`: per-tier gather + validate status, SQL, row counts, notes
-- `research_brief`: aggregated findings across tiers
-- Primary `sql_fetch` from the tier matching `report_type`, with fallback to the deepest successful tier
-- Result `done` when at least one tier validates, else `failed`
+- One SELECT (or CTE+SELECT) + sql_fetch
+- `goals`, `what_was_done`
+- `done` or `fail`
+
+## Tools
+
+- `execute_select` — warehouse only
+- `search_web` — public facts outside catalog
+- Never `submit_result`
 
 ## Notes
 
 Model: `openrouter.agents.researcher.model`.
-Python runs the data-gatherer → validator sub-loop per tier; this agent synthesizes the brief from layer artifacts.
-When the user prompt needs public web facts outside the warehouse, Python invokes `web-searcher` at research start (researcher probe) and again per tier when `data-gatherer` requests `web_search_queries`.
+Server enforces SELECT-only + row cap.

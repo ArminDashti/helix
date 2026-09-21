@@ -9,7 +9,7 @@ services:
         VITE_BASE_PATH: ${VITE_BASE_PATH:-/helix/}
     image: ${IMAGE_TAG:-helix-webui:latest}
     container_name: helix-webui
-    restart: "no"
+    restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

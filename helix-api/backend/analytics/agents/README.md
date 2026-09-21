@@ -1,35 +1,33 @@
 # Helix agents
 
-This directory holds the **agent army**: shared rules/skills/schema plus Orchester and internal phase folders.
+Shared rules/skills/schema plus the LangGraph army: orchester, guardian, researcher, final-approver.
 
 ## Status
 
-Agents are **arranged and executed** (Markdown + `helix.config.example.yaml` models). Runtime prompts use assigned rules and skills only — not instruction files.
+Agents are arranged in markdown + `helix.config.example.yaml` models. Runtime is LangGraph (`api/pipeline_langgraph.py`).
 
 ## Layout
 
 | Path | Purpose |
 |------|---------|
-| `_shared/rules/` | Army-wide policies: core-behavior, output-contract |
-| `_shared/skills/` | Reusable playbooks (`SKILL.md`) |
-| `_shared/schema/tables.md` | SQL allowlist + descriptions |
-| `orchester/AGENT.md` | Single pipeline agent identity |
-| `<phase>/rules/` / `<phase>/skills/` | Internal phase prompts (guardian, data-gatherer, …) |
+| `_shared/rules/` | Army-wide policies |
+| `_shared/skills/` | Reusable playbooks |
+| `_shared/schema/tables.md` | SQL allowlist |
+| `orchester/` | Supervisor |
+| `guardian/` | Safety + product-scope gate |
+| `researcher/` | Warehouse SELECT + optional web |
+| `final-approver/` | Validate + report + handoff |
 | `registry.md` | Pipeline index |
 
-## Seed pipeline
+## Pipeline
 
 ```text
 orchester
-  (phases: guard → gather|research → validate → build → validate → publish)
+  → guardian → researcher → final-approver → orchester (package) → frontend
 ```
 
-Research mode uses the same Orchester node; the research phase runs tiered gather/validate internally.
+`web-searcher` is a sub-agent tool for researcher, not a graph node.
 
 ## Models
 
-Set `openrouter.agents.orchester.model` in `helix.config.example.yaml` / your local `helix.config.yaml`.
-
-Sub-agent `web-searcher` is not a graph node. Python invokes it when a gather/research phase requests external context.
-
-See [registry.md](registry.md).
+Set `openrouter.agents.<id>.model` in `helix.config.example.yaml` / local `helix.config.yaml`.

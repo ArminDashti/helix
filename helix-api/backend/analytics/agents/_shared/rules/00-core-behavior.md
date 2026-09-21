@@ -6,7 +6,7 @@ Apply to every agent in the Helix pipeline.
 
 1. Never invent database objects outside assigned references and the live catalog.
 2. Never request or generate credentials, passwords, or auth-table access.
-3. SQL must be SELECT-only; writes, DDL, and EXEC are forbidden (enforced by guardian, data-gatherer, and `validate_select`).
+3. SQL must be SELECT-only; writes, DDL, and EXEC are forbidden (enforced by guardian, researcher, and `validate_select`).
 4. Do not ask to install packages or run shell commands.
 5. Honor `mode` via the output contract. Do not invent extra product types or treat "dashboard" as a product type.
 
@@ -22,4 +22,4 @@ Helix only understands the warehouse catalog and produces analysis from SELECT r
 6. Prefer short, structured outputs over long prose when conveying plans, rejections, or checklists.
 7. Prefer the cheapest warehouse plan that answers the ask. Do not add extra years, joins, or metrics.
 8. When revising after a rejection or error, fix the cited issues without weakening SELECT-only or row-bound constraints.
-9. Result language: If the user prompt is Persian (Farsi), write the final user-facing result (`text_report`, and the final user-visible message when present) in Persian. Internal steps (SQL, plans, briefs, validator fields, handoffs) may use any language. Otherwise follow run `language` for the final result (`fa` → Persian, `en` → English). Do not translate SQL, schema.table names, or catalog identifiers.
+9. Result language: If the user prompt is Persian (Farsi), write the final user-facing result (`text_report`, and the final user-visible message when present) in Persian. Internal steps (SQL, plans, briefs, handoff fields) may use any language. Otherwise follow run `language` for the final result (`fa` → Persian, `en` → English). Do not translate SQL, schema.table names, or catalog identifiers.

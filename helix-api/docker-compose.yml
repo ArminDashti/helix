@@ -8,7 +8,7 @@ services:
       context: .
       dockerfile: dockerfile
     container_name: helix-api
-    restart: "no"
+    restart: unless-stopped
     environment:
       HELIX_ALLOWED_HOSTS: "*"
       HELIX_DEBUG: "false"

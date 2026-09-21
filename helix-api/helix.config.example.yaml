@@ -25,6 +25,12 @@ openrouter:
   agents:
     orchester:
       model: "composer-2.5"
+    guardian:
+      model: "composer-2.5"
+    researcher:
+      model: "composer-2.5"
+    final-approver:
+      model: "composer-2.5"
     web-searcher:
       model: "composer-2.5"
 

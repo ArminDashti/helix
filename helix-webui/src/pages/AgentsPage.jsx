@@ -89,12 +89,21 @@ export default function AgentsPage() {
   const rows = useMemo(
     () =>
       agents
-        .filter((agent) => agent.id === "orchester")
+        .filter((agent) =>
+          ["orchester", "guardian", "researcher", "final-approver"].includes(
+            agent.id,
+          ),
+        )
         .map((agent) => ({ key: agent.id, item: agent })),
     [agents],
   );
   const pipelineAgents = useMemo(
-    () => agents.filter((agent) => agent.id === "orchester"),
+    () =>
+      agents.filter((agent) =>
+        ["orchester", "guardian", "researcher", "final-approver"].includes(
+          agent.id,
+        ),
+      ),
     [agents],
   );
 

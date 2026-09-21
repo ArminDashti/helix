@@ -4,3 +4,5 @@ PyYAML>=6.0
 gunicorn>=22.0,<24
 pyodbc>=5.0,<6
 psycopg[binary]>=3.2,<4
+langgraph>=0.2,<1
+langchain-core>=0.3,<1

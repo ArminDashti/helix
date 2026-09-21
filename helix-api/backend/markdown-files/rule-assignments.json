@@ -5,19 +5,7 @@
   "warehouse-sql": [
     "orchester"
   ],
-  "conduct-research": [
-    "orchester"
-  ],
-  "synthesize-brief": [
-    "orchester"
-  ],
-  "match-goal": [
-    "orchester"
-  ],
-  "build-result": [
-    "orchester"
-  ],
-  "package-payload": [
+  "approve-result": [
     "orchester"
   ],
   "web-search-only": [

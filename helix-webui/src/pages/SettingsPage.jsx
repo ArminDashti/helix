@@ -67,7 +67,13 @@ const EMPTY_OPENROUTER = {
   mode: "",
 };
 
-const LLM_AGENT_IDS = ["orchester", "web-searcher"];
+const LLM_AGENT_IDS = [
+  "orchester",
+  "guardian",
+  "researcher",
+  "final-approver",
+  "web-searcher",
+];
 
 const ADMIN_GUIDE_PDF = assetUrl("docs/fa/helix-admin-guide.pdf");
 
@@ -761,7 +767,14 @@ export default function SettingsPage() {
     ? Object.keys(agentSource)
     : Object.keys(agentNameById);
   const filteredLlmAgents = LLM_AGENT_IDS.filter(
-    (id) => id === "orchester" || agentIdPool.includes(id),
+    (id) =>
+      [
+        "orchester",
+        "guardian",
+        "researcher",
+        "final-approver",
+        "web-searcher",
+      ].includes(id) || agentIdPool.includes(id),
   );
   const agentIds = sortStrings(filteredLlmAgents, locale).sort((a, b) =>
     compareAz(agentLabel(a), agentLabel(b), locale),

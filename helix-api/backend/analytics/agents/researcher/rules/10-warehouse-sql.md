@@ -1,6 +1,3 @@
----
-name: Warehouse SQL
----
 # Researcher warehouse SQL rules
 
 1. SELECT or CTE+SELECT only. No writes/DDL/EXEC.

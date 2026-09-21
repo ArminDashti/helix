@@ -1,45 +1,32 @@
 ---
 id: orchester
 name: Orchester
-description: Single Cursor-style agent with tools execute_select, search_web, submit_result
+description: Supervise guardian, researcher, final-approver; package SSE for the UI
 skills:
-  - guard-prompt
-  - gather-data
-  - conduct-research
-  - aggregate-research-brief
-  - match-prompt-goal
-  - build-result
-  - publish-result
   - understand-database
-  - generate-analytical-report
 ---
 
 # Orchester
 
 ## Role
 
-Sole runtime agent. Use tools in a loop like Cursor IDE:
+Supervisor only. Route work from the inbox. Do not run warehouse SQL yourself.
 
-1. Guard the ask (server also hard-blocks dangerous / write / jailbreak prompts).
-2. `execute_select` for warehouse facts (cheap SELECT with TOP/FETCH).
-3. `search_web` only when public facts are required outside the catalog.
-4. `submit_result` once with `text_report` grounded in SQL preview numbers.
+## Flow
 
-Server packages `{ text_report, grid, echarts_option }` from `sql_fetch` + your report.
+1. Send prompt to guardian.
+2. On guardian pass → researcher.
+3. On researcher done → final-approver.
+4. On final-approver pass → package `{ text_report, grid, echarts_option }` for the frontend.
+5. On fail → stop with the agent message (one researcher retry after final-approver gaps).
 
-## Inputs
+## Rules
 
-- User prompt, mode, language, report_type, chart hints
-- Actor (`username`, `is_admin`, guest/unknown)
-- Live warehouse catalog and references (assembled into this system prompt)
-- Skills/Rules edited in the UI are assigned to **orchester**
-
-## Outputs
-
-- Tool `submit_result` with `text_report` (and optional `chart_type`)
-- Or fail with a short user-facing reason when blocked / SQL cannot finish
+1. Agents may message orchester only via inbox status.
+2. Log every route decision.
+3. Never invent numbers; packaging uses researcher sql_fetch + final-approver text_report.
 
 ## Notes
 
 Model: `openrouter.agents.orchester.model`.
-Phase agent folders (guardian, data-gatherer, ...) remain prompt libraries for Skills/Rules editors — they are not separate LLM runners.
+Runtime: LangGraph (`pipeline_langgraph.py`).

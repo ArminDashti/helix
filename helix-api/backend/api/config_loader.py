@@ -168,10 +168,12 @@ def _drop_stale_pipeline_graph(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
-def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
-    """Drop saved multi-agent graphs so the single-Orchester default is restored."""
-    from .agents import PHASE_AGENT_IDS
+_DEFAULT_PIPELINE_AGENT_IDS = ("orchester", "guardian", "researcher", "final-approver")
 
+
+def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
+    """Reset saved graphs that are not the four-agent LangGraph seed."""
+    expected = set(_DEFAULT_PIPELINE_AGENT_IDS)
     needs_reset = False
     graph = data.get("pipeline_graph")
     if isinstance(graph, dict):
@@ -180,18 +182,15 @@ def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
             for node in (graph.get("nodes") or [])
             if isinstance(node, dict)
         }
-        if node_ids != {"orchester"}:
+        if node_ids != expected:
             needs_reset = True
-        if node_ids & set(PHASE_AGENT_IDS):
-            needs_reset = True
-        # Drop stale self-retry circuit: single try has no e_retry_orchester
         for edge in graph.get("edges") or []:
             if not isinstance(edge, dict):
                 continue
             eid = str(edge.get("id") or "")
             src = str(edge.get("source") or "")
             tgt = str(edge.get("target") or "")
-            if eid.startswith("e_retry_") and src == "orchester" and tgt == "orchester":
+            if eid.startswith("e_retry_") and src == tgt:
                 needs_reset = True
                 break
     flow = data.get("pipeline_flow")
@@ -202,7 +201,7 @@ def _ensure_single_orchester_pipeline(data: dict[str, Any]) -> dict[str, Any]:
             for child in children
             if isinstance(child, dict)
         ]
-        if agent_ids != ["orchester"]:
+        if agent_ids != list(_DEFAULT_PIPELINE_AGENT_IDS):
             needs_reset = True
     if not needs_reset:
         return data

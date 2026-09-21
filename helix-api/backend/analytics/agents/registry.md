@@ -1,20 +1,22 @@
 # Agent registry
 
-Pipeline (all modes):
+Pipeline (LangGraph):
 
 ```text
-orchester
-  (phases: guard → gather|research → validate → build → validate → publish)
+orchester → guardian → researcher → final-approver → orchester (package)
 ```
 
 | # | Id | When to use |
 |---|-----|-------------|
-| 1 | `orchester` | Single agent that guards, gathers/researches, builds, and packages |
+| 1 | `orchester` | Supervise inbox routing and package SSE for the UI |
+| 2 | `guardian` | Block unsafe / off-product prompts |
+| 3 | `researcher` | Catalog SELECT gather + optional web search |
+| 4 | `final-approver` | Validate research, write text_report, hand off |
 
-**Sub-agents** (not pipeline steps — invoked by Orchester when needed):
+**Sub-agents** (not graph nodes):
 
 | Id | When to use |
 |----|-------------|
-| `web-searcher` | Public web search when warehouse/catalog cannot answer external-fact asks |
+| `web-searcher` | Public web search when researcher needs external facts |
 
-**Models:** set under `openrouter.agents.orchester.model` in `helix.config.yaml` (see `helix.config.example.yaml`). Never hardcode models in `AGENT.md`.
+**Models:** `openrouter.agents.<id>.model` in `helix.config.yaml`. Never hardcode models in `AGENT.md`.

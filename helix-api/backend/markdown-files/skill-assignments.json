@@ -1,50 +1,20 @@
 {
-  "orchester/guard-prompt": [
-    "orchester"
-  ],
-  "orchester/gather-data": [
-    "orchester"
-  ],
-  "orchester/conduct-research": [
-    "orchester"
-  ],
-  "orchester/aggregate-research-brief": [
-    "orchester"
-  ],
-  "orchester/match-prompt-goal": [
-    "orchester"
-  ],
-  "orchester/build-result": [
-    "orchester"
-  ],
-  "orchester/publish-result": [
-    "orchester"
-  ],
   "shared/understand-database": [
-    "orchester"
-  ],
-  "shared/generate-analytical-report": [
     "orchester"
   ],
   "guardian/guard-prompt": [
     "orchester"
   ],
-  "data-gatherer/gather-data": [
+  "researcher/gather-data": [
     "orchester"
   ],
-  "researcher/conduct-research": [
+  "final-approver/match-prompt-goal": [
     "orchester"
   ],
-  "researcher/aggregate-research-brief": [
+  "final-approver/build-result": [
     "orchester"
   ],
-  "validator/match-prompt-goal": [
-    "orchester"
-  ],
-  "result-builder/build-result": [
-    "orchester"
-  ],
-  "publisher/publish-result": [
+  "final-approver/publish-result": [
     "orchester"
   ],
   "web-searcher/search-web": [
