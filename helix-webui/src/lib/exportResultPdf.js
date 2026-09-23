@@ -291,7 +291,7 @@ export function buildPdfHtml({
 
   const rootFont = elementStyle(prefs, "text");
   return {
-    html: `<div style="font-family:${rootFont.fontFamily};color:#111;background:#fff;padding:16px;box-sizing:border-box;">${headerInline}${chartImgInline}${articleInline}${gridInline}${footerInline}</div>`,
+    html: `<div style="font-family:${rootFont.fontFamily};color:#111;background:${prefs.pageBackgroundColor || "#fff"};padding:16px;box-sizing:border-box;">${headerInline}${chartImgInline}${articleInline}${gridInline}${footerInline}</div>`,
     dir,
     lang,
   };
@@ -372,7 +372,7 @@ export async function exportResultPdf({
   element.style.left = "-9999px";
   element.style.top = "0";
   element.style.width = orientation === "portrait" ? "794px" : "1123px";
-  element.style.background = "#ffffff";
+  element.style.background = prefs.pageBackgroundColor || "#ffffff";
   element.setAttribute("dir", dir);
   element.setAttribute("lang", lang);
   element.innerHTML = html;
@@ -387,7 +387,7 @@ export async function exportResultPdf({
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
-      backgroundColor: "#ffffff",
+      backgroundColor: prefs.pageBackgroundColor || "#ffffff",
       logging: false,
     });
 

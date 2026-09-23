@@ -1,4 +1,4 @@
-"""Guardian review of plain-language per-user warehouse data access."""
+"""Guardian review of plain-language per-user data access."""
 
 from __future__ import annotations
 
@@ -81,9 +81,9 @@ def review_data_access_policy(
     catalog_blob = ", ".join(catalog[:200])
     system = (
         "You are the Helix guardian agent reviewing a new company user's "
-        "warehouse data-access policy written in plain language.\n"
+        "data-access policy written in plain language.\n"
         "Rules:\n"
-        "1. Accept only SELECT-only analytics access to named warehouse tables.\n"
+        "1. Accept only SELECT-only analytics access to named tables.\n"
         "2. Reject writes, DDL, EXEC, credentials, secrets, or all-tables without limit "
         "for non-admins when the text is vague or dangerous.\n"
         "3. Map the policy to concrete table names from the catalog when possible.\n"

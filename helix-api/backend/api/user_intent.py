@@ -1,4 +1,4 @@
-"""Resolve user intent by connecting to the configured warehouse DB.
+"""Resolve user intent by connecting to the configured database.
 
 The pipeline calls this before any LLM step so skills/rules can work from
 what the database says the user actually wants, not just the raw chat prompt.

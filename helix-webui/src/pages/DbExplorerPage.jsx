@@ -138,7 +138,7 @@ export default function DbExplorerPage() {
               value={tableFilter}
               onChange={(e) => setTableFilter(e.target.value)}
               placeholder={t("dbExplorer.filterPlaceholder")}
-              className="mt-1 w-full min-w-[8rem] rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 h-10 w-full min-w-[8rem] rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
             />
           </label>
 
@@ -147,7 +147,7 @@ export default function DbExplorerPage() {
             <select
               value={table}
               onChange={(e) => setTable(e.target.value)}
-              className="mt-1 w-full min-w-[10rem] rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 h-10 w-full min-w-[10rem] rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
             >
               {tables.length === 0 ? (
                 <option value="">{t("dbExplorer.noTables")}</option>
@@ -185,7 +185,7 @@ export default function DbExplorerPage() {
                   icon={Database}
                   onClick={() => setLimit(n)}
                   className={[
-                    "rounded-lg border px-3 py-1.5 text-xs font-semibold",
+                    "h-10 rounded-lg border px-3 text-xs font-semibold",
                     limit === n
                       ? "border-moss bg-moss text-white"
                       : "border-line bg-fog/40 text-ink hover:bg-fog",
@@ -207,7 +207,7 @@ export default function DbExplorerPage() {
                   icon={pos === "top" ? ArrowUp : ArrowDown}
                   onClick={() => setPosition(pos)}
                   className={[
-                    "rounded-lg border px-3 py-1.5 text-xs font-semibold capitalize",
+                    "h-10 rounded-lg border px-3 text-xs font-semibold capitalize",
                     position === pos
                       ? "border-moss bg-moss text-white"
                       : "border-line bg-fog/40 text-ink hover:bg-fog",
@@ -224,7 +224,7 @@ export default function DbExplorerPage() {
             <select
               value={orderBy}
               onChange={(e) => setOrderBy(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 h-10 w-full rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
             >
               {columnNames.length === 0 ? (
                 <option value="">{t("common.noneDash")}</option>
@@ -243,32 +243,32 @@ export default function DbExplorerPage() {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 text-sm outline-none focus:border-moss"
+              className="mt-1 h-10 w-full rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
             >
               <option value="ASC">{t("dbExplorer.sortAsc")}</option>
               <option value="DESC">{t("dbExplorer.sortDesc")}</option>
             </select>
           </label>
 
+          <label className="block min-w-[16rem] grow text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.where")}</span>
+            <input
+              value={where}
+              onChange={(e) => setWhere(e.target.value)}
+              placeholder={t("dbExplorer.wherePlaceholder")}
+              className="mt-1 h-10 w-full rounded-xl border border-line bg-fog/40 px-3 font-mono text-[13px] outline-none focus:border-moss"
+            />
+          </label>
+
           <IconButton
             type="submit"
             icon={Play}
             disabled={!table || running}
-            className="shrink-0 rounded-xl bg-moss px-5 py-2.5 text-sm font-semibold text-white hover:bg-moss-deep disabled:opacity-50"
+            className="h-10 shrink-0 rounded-xl bg-moss px-5 text-sm font-semibold text-white hover:bg-moss-deep disabled:opacity-50"
           >
             {running ? t("dbExplorer.running") : t("dbExplorer.run")}
           </IconButton>
         </div>
-
-        <label className="block w-full text-sm">
-          <span className="font-medium text-ink">{t("dbExplorer.where")}</span>
-          <input
-            value={where}
-            onChange={(e) => setWhere(e.target.value)}
-            placeholder={t("dbExplorer.wherePlaceholder")}
-            className="mt-1 w-full rounded-xl border border-line bg-fog/40 px-3 py-2 font-mono text-[13px] outline-none focus:border-moss"
-          />
-        </label>
       </form>
 
       {result ? (

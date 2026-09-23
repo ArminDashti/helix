@@ -1,11 +1,13 @@
 # Copy to helix.config.yaml and fill in secrets.
 # Do not commit helix.config.yaml.
 #
-# Paste the OpenRouter or OpenAI-compatible API key in Settings.
+# Paste the API key in Settings > LLM. One key is enough for every connector.
 # Keys are stored as openrouter.token (never returned by the API).
-# provider: openrouter | openai_compatible
+# provider: opencode_go | openrouter | openai_compatible | cursor_headless_cli
+# - opencode_go: OpenCode Go subscription; the app supplies the endpoint
+#   (https://opencode.ai/zen/go/v1) and the plan's model catalog — key only.
 # - openrouter / openai_compatible: OpenAI-compatible chat via openrouter.base_url
-# openrouter.base_url defaults to https://openrouter.ai/api/v1 for OpenRouter.
+# openrouter.base_url defaults to the connector's own endpoint.
 # For Cursor OpenAI proxies (chat/completions), set openrouter.workspace to an
 # absolute host path; mode is always agent (ask/plan are rejected/coerced).
 provider: openrouter
@@ -92,6 +94,12 @@ sql:
   enforce_allowlist: false # set true to reject FROM/JOIN objects not returned by list_tables
   forbid_select_star: true
   max_rows: 10000 # used only when require_row_limit is true
+
+# Agents switched off at runtime. The same list is what Settings → Agents toggles.
+# web-searcher is off by default: the agent, its rule, and its skill still ship, but the
+# researcher's search_web tool is not offered to the model while it is disabled.
+disabled_agents:
+  - web-searcher
 
 # Pipeline layout is stored in helix.config.yaml as pipeline_graph (runner)
 # and pipeline_flow (Arrange stages: IF / IF NOT / Proceed). Edit in the UI.

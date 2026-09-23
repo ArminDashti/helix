@@ -1,23 +1,17 @@
 {
-  "shared/understand-database": [
+  "orchester/orchestrate-pipeline": [
     "orchester"
   ],
   "guardian/guard-prompt": [
-    "orchester"
+    "guardian"
   ],
   "researcher/gather-data": [
-    "orchester"
-  ],
-  "final-approver/match-prompt-goal": [
-    "orchester"
-  ],
-  "final-approver/build-result": [
-    "orchester"
+    "researcher"
   ],
   "final-approver/publish-result": [
-    "orchester"
+    "final-approver"
   ],
   "web-searcher/search-web": [
-    "orchester"
+    "web-searcher"
   ]
 }

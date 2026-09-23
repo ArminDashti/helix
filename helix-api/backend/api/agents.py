@@ -14,7 +14,7 @@ AGENT_PIPELINE = [
     {
         "id": "researcher",
         "name": "researcher",
-        "description": "Connect to the warehouse catalog, run SELECT gathers, optional web search",
+        "description": "Connect to the live catalog, run SELECT gathers, optional web search",
     },
     {
         "id": "final-approver",

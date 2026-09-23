@@ -9,6 +9,7 @@ import socket
 import time
 import urllib.error
 import urllib.request
+import uuid
 from urllib.parse import urlparse
 from copy import deepcopy
 from pathlib import Path
@@ -30,8 +31,69 @@ AGENT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 TOKEN_ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 DEFAULT_OPENROUTER_TOKEN_ENV = "OPENROUTER_TOKEN"
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+PROVIDER_OPENROUTER = "openrouter"
+PROVIDER_OPENAI_COMPATIBLE = "openai_compatible"
 PROVIDER_CURSOR_HEADLESS_CLI = "cursor_headless_cli"
-VALID_PROVIDERS = ("openrouter", "openai_compatible", PROVIDER_CURSOR_HEADLESS_CLI)
+PROVIDER_OPENCODE_GO = "opencode_go"
+
+# Connectors: every LLM back-end the user can pick, in dropdown order. A connector owns whatever
+# the app can decide for the user — endpoint, default model, key env var — so Settings only asks
+# for the API key when the vendor endpoint is fixed (`asks_base_url` False), hides the
+# Cursor-proxy workspace field on connectors that never use it, and skips the key field entirely
+# on connectors that authenticate out of band (`api_key_required` False).
+CONNECTORS: dict[str, dict[str, Any]] = {
+    PROVIDER_OPENROUTER: {
+        "id": PROVIDER_OPENROUTER,
+        "label": "OpenRouter",
+        "base_url": DEFAULT_OPENROUTER_BASE_URL,
+        "token_env": DEFAULT_OPENROUTER_TOKEN_ENV,
+        "asks_base_url": True,
+        "asks_workspace": True,
+        "api_key_required": True,
+        "key_url": "https://openrouter.ai/keys",
+    },
+    # OpenCode Go: one API key and nothing else — the plan's subscription endpoint and model
+    # catalog are the vendor's. base_url is the OpenAI-compatible root serving
+    # /chat/completions and /models.
+    PROVIDER_OPENCODE_GO: {
+        "id": PROVIDER_OPENCODE_GO,
+        "label": "OpenCode-Go",
+        "base_url": "https://opencode.ai/zen/go/v1",
+        "default_model": "deepseek-v4-flash",
+        "token_env": "OPENCODE_GO_API_KEY",
+        "asks_base_url": False,
+        "asks_workspace": False,
+        "api_key_required": True,
+        "key_url": "https://opencode.ai/auth",
+        # opencode.ai sits behind Cloudflare, which answers urllib's default User-Agent with
+        # 403 / error 1010 — /models and /chat/completions both need a real one.
+        "headers": {"User-Agent": "Helix/1.0"},
+        # Go routes on a stable per-conversation id and rejects a request without one
+        # (400 MissingSessionID), so the header name lives with the connector.
+        "session_header": "x-opencode-session",
+    },
+    PROVIDER_OPENAI_COMPATIBLE: {
+        "id": PROVIDER_OPENAI_COMPATIBLE,
+        "label": "OpenAI-compatible",
+        "base_url": "",
+        "token_env": DEFAULT_OPENROUTER_TOKEN_ENV,
+        "asks_base_url": True,
+        "asks_workspace": True,
+        "api_key_required": True,
+        "key_url": "",
+    },
+    PROVIDER_CURSOR_HEADLESS_CLI: {
+        "id": PROVIDER_CURSOR_HEADLESS_CLI,
+        "label": "Cursor-Headless-CLI",
+        "base_url": "",
+        "token_env": "CURSOR_API_KEY",
+        "asks_base_url": False,
+        "asks_workspace": True,
+        "api_key_required": False,
+        "key_url": "",
+    },
+}
+VALID_PROVIDERS = tuple(CONNECTORS)
 
 
 def _normalize_llm_mode(value: Any) -> str:
@@ -73,7 +135,64 @@ DEFAULT_OPENROUTER = {
     "agents": {agent_id: {"model": model} for agent_id, model in DEFAULT_AGENT_MODELS.items()},
 }
 
-DEFAULT_PROVIDER = "openrouter"
+DEFAULT_PROVIDER = PROVIDER_OPENROUTER
+
+
+def connector_meta(provider: str | None) -> dict[str, Any]:
+    """Descriptor of one connector; {} when the id is unknown."""
+    return CONNECTORS.get(str(provider or "").strip().lower(), {})
+
+
+def get_connectors() -> list[dict[str, Any]]:
+    """Connector descriptors for the Settings form. Never carries a secret."""
+    return [dict(CONNECTORS[provider_id]) for provider_id in VALID_PROVIDERS]
+
+
+def provider_default_base_url(provider: str | None) -> str:
+    """Vendor endpoint of a connector that owns one; '' means the user supplies it."""
+    return str(connector_meta(provider).get("base_url") or "")
+
+
+def provider_default_model(provider: str | None) -> str:
+    """Model the app proposes for a connector (falls back to the shared default)."""
+    return str(connector_meta(provider).get("default_model") or DEFAULT_LLM_MODEL)
+
+
+def provider_default_token_env(provider: str | None) -> str:
+    """Env var an unset connector falls back to when no key is stored in config."""
+    return str(connector_meta(provider).get("token_env") or DEFAULT_OPENROUTER_TOKEN_ENV)
+
+
+def new_llm_session_id() -> str:
+    """A fresh conversation id for vendors that route on one (OpenCode Go)."""
+    return f"helix-{uuid.uuid4().hex}"
+
+
+# Fallback conversation id: stable for the life of this process, so call sites that have no
+# conversation of their own (settings tester, policy check) still send a routable session.
+_PROCESS_SESSION_ID = new_llm_session_id()
+
+
+def get_llm_headers(provider: str | None = None, session_id: str | None = None) -> dict[str, str]:
+    """Extra HTTP headers the connector's vendor expects on every LLM request.
+
+    Vendors front their API with a WAF (opencode.ai answers urllib's default User-Agent with
+    403 / error 1010), so the User-Agent and any attribution headers belong to the connector
+    rather than to each call site. A connector that routes on a session id (``session_header``)
+    gets one here too: the caller's conversation id when it has one, else the process id.
+    """
+    meta = connector_meta(provider or get_provider())
+    headers = dict(meta["headers"]) if isinstance(meta.get("headers"), dict) else {}
+    session_header = str(meta.get("session_header") or "").strip()
+    if session_header:
+        headers[session_header] = str(session_id or "").strip() or _PROCESS_SESSION_ID
+    return headers
+
+
+def provider_label(provider: str | None = None) -> str:
+    """Human-facing connector name, for status text; falls back to the raw id."""
+    provider_id = str(provider or get_provider()).strip().lower()
+    return str(connector_meta(provider_id).get("label") or provider_id)
 
 
 def _config_path() -> Path:
@@ -247,7 +366,7 @@ def save_config(data: dict[str, Any]) -> None:
 
 
 def is_user_provided_database(db: dict[str, Any] | None) -> bool:
-    """True when the user configured a real warehouse (not the built-in sample)."""
+    """True when the user configured a real database (not the built-in sample)."""
     from .db_dialects.base import normalize_engine
     from .sample_database import is_sample_db_path
 
@@ -517,7 +636,7 @@ def get_openrouter_token_env() -> str:
     raw = data.get("openrouter") or {}
     if not isinstance(raw, dict):
         raw = {}
-    return _token_env_from_section(raw, DEFAULT_OPENROUTER_TOKEN_ENV)
+    return _token_env_from_section(raw, provider_default_token_env(get_provider()))
 
 
 def _section_stored_token(raw: Any) -> str:
@@ -563,7 +682,7 @@ def _rewrite_unresolvable_hostname_to_localhost(base_url: str) -> str:
 
 
 def get_llm_base_url() -> str:
-    """Chat/models host: OpenRouter stored URL or OpenRouter default."""
+    """Chat/models host: the stored URL, else the connector's own endpoint."""
     data = load_config()
     raw = data.get("openrouter") or {}
     if not isinstance(raw, dict):
@@ -573,9 +692,7 @@ def get_llm_base_url() -> str:
     )
     if stored:
         return stored
-    if get_provider() == "openrouter":
-        return DEFAULT_OPENROUTER_BASE_URL
-    return ""
+    return provider_default_base_url(get_provider())
 
 
 DEFAULT_LLM_TIMEOUT_SECONDS = 600
@@ -649,6 +766,7 @@ def fetch_openrouter_models(*, force: bool = False) -> list[dict[str, str]]:
         headers={
             "Authorization": f"Bearer {token}",
             "Accept": "application/json",
+            **get_llm_headers(),
         },
         method="GET",
     )
@@ -695,40 +813,25 @@ def get_openrouter_settings() -> dict[str, Any]:
     if not isinstance(raw, dict):
         raw = {}
 
+    provider = get_provider()
     agents_raw = raw.get("agents") if isinstance(raw.get("agents"), dict) else {}
-    known = known_agent_ids()
-    agents: dict[str, dict[str, str]] = {}
-    for agent_id, default_model in DEFAULT_AGENT_MODELS.items():
-        if agent_id not in known:
-            continue
-        entry = agents_raw.get(agent_id) if isinstance(agents_raw.get(agent_id), dict) else {}
-        model = entry.get("model") if entry else None
-        agents[agent_id] = {
-            "model": str(model).strip() if model else default_model,
-        }
-    # Optional model overrides for custom agents (fall back to default_model at runtime)
+    # Agents without a model of their own follow the connector's default (not the OpenRouter-era
+    # constant), so switching connector never leaves an agent pinned to a retired vendor's model.
     default_model = (
-        DEFAULT_OPENROUTER["default_model"]
-        if not raw.get("default_model")
-        else str(raw.get("default_model")).strip()
+        str(raw.get("default_model") or "").strip() or provider_default_model(provider)
     )
-    for meta in get_custom_agents():
-        agent_id = meta["id"]
+    # Every known agent gets an entry. The Settings form round-trips this map straight back on
+    # save, so an agent missing here would return as the form's placeholder and overwrite the
+    # model the admin had stored for it.
+    agents: dict[str, dict[str, str]] = {}
+    for agent_id in ordered_agent_ids():
         entry = agents_raw.get(agent_id) if isinstance(agents_raw.get(agent_id), dict) else {}
-        model = entry.get("model") if entry else None
-        if model and str(model).strip():
-            agents[agent_id] = {"model": str(model).strip()}
-        elif agent_id in agents_raw:
-            agents[agent_id] = {"model": default_model}
+        model = str(entry.get("model") or "").strip()
+        agents[agent_id] = {"model": model or default_model}
 
     token = get_openrouter_token()
     stored_base_url = _normalize_base_url(raw.get("base_url"))
-    if stored_base_url:
-        base_url = stored_base_url
-    elif get_provider() == "openrouter":
-        base_url = DEFAULT_OPENROUTER_BASE_URL
-    else:
-        base_url = ""
+    base_url = stored_base_url or provider_default_base_url(provider)
     workspace = str(raw.get("workspace") or "").strip()
     mode = _normalize_llm_mode(raw.get("mode"))
     return {
@@ -748,10 +851,11 @@ def get_openrouter_settings() -> dict[str, Any]:
 
 def update_openrouter_settings(payload: dict[str, Any]) -> dict[str, Any]:
     data = load_config()
+    provider = get_provider()
     current = get_openrouter_settings()
     raw = data.get("openrouter") if isinstance(data.get("openrouter"), dict) else {}
     stored_token = _section_stored_token(raw)
-    stored_env = _token_env_from_section(raw, DEFAULT_OPENROUTER_TOKEN_ENV)
+    stored_env = _token_env_from_section(raw, provider_default_token_env(provider))
 
     if "token" in payload:
         incoming = payload.get("token")
@@ -764,6 +868,12 @@ def update_openrouter_settings(payload: dict[str, Any]) -> dict[str, Any]:
     stored_base_url = _normalize_base_url(raw.get("base_url"))
     if "base_url" in payload:
         stored_base_url = _normalize_base_url(payload.get("base_url"))
+    # A connector that owns its endpoint decides it here, not the caller: the Settings form shows
+    # no field for it, and a URL left over from another connector would misroute every request.
+    if not connector_meta(provider).get("asks_base_url", True):
+        managed_base_url = provider_default_base_url(provider)
+        if managed_base_url:
+            stored_base_url = managed_base_url
     stored_workspace = str(raw.get("workspace") or "").strip()
     if "workspace" in payload:
         stored_workspace = str(payload.get("workspace") or "").strip()
@@ -835,13 +945,60 @@ def get_provider() -> str:
 def update_provider(provider: str) -> str:
     value = (provider or "").strip().lower()
     if value not in VALID_PROVIDERS:
-        raise ValueError(
-            "provider must be openrouter, openai_compatible, or cursor_headless_cli"
-        )
+        raise ValueError(f"provider must be one of: {', '.join(VALID_PROVIDERS)}")
     data = load_config()
+    previous = str(data.get("provider") or "").strip().lower()
     data["provider"] = value
+    if value != previous:
+        _seed_connector_defaults(data, previous, value)
     save_config(data)
     return value
+
+
+def _seed_connector_defaults(data: dict[str, Any], previous: str, provider: str) -> None:
+    """Carry the app-owned LLM settings over to the connector being selected.
+
+    Only values the app itself wrote — or left empty — are replaced; a base URL or model the user
+    typed is kept. Without this, picking a connector that owns its endpoint would keep the previous
+    vendor's URL and model ids and fail on the first request.
+    """
+    raw = data.get("openrouter")
+    if not isinstance(raw, dict):
+        raw = {}
+
+    previous_url = provider_default_base_url(previous)
+    next_url = provider_default_base_url(provider)
+    stored_url = _normalize_base_url(raw.get("base_url"))
+    if next_url:
+        if not stored_url or stored_url in (previous_url, next_url):
+            raw["base_url"] = next_url
+    elif stored_url and stored_url == previous_url:
+        # The new connector has no vendor endpoint of its own: keeping the old one would silently
+        # send its traffic to the wrong host, so the user supplies a URL again.
+        raw["base_url"] = ""
+
+    previous_model = provider_default_model(previous)
+    next_model = provider_default_model(provider)
+    stored_model = str(raw.get("default_model") or "").strip()
+    if stored_model in ("", previous_model, next_model):
+        raw["default_model"] = next_model
+
+    previous_env = provider_default_token_env(previous)
+    next_env = provider_default_token_env(provider)
+    stored_env = str(raw.get("token_env") or "").strip()
+    if stored_env in ("", previous_env, next_env):
+        raw["token_env"] = next_env
+
+    agents = raw.get("agents")
+    if isinstance(agents, dict):
+        for entry in agents.values():
+            if not isinstance(entry, dict):
+                continue
+            model = str(entry.get("model") or "").strip()
+            if model in ("", previous_model, next_model):
+                entry["model"] = next_model
+
+    data["openrouter"] = raw
 
 
 # Max data-URL length for company logo (~300KB binary as base64).
@@ -996,6 +1153,15 @@ def get_disabled_agent_ids() -> set[str]:
     return {str(item).strip() for item in raw if str(item).strip()}
 
 
+def web_search_enabled() -> bool:
+    """Web search is off while the web-searcher sub-agent is disabled.
+
+    The tool list follows this: a disabled capability must not stay callable through
+    `search_web`, and no agent prompt may advertise it.
+    """
+    return "web-searcher" not in get_disabled_agent_ids()
+
+
 def set_agent_disabled(agent_id: str, disabled: bool) -> dict[str, Any]:
     if agent_id not in known_agent_ids():
         raise KeyError(f"Unknown agent: {agent_id}")
@@ -1029,6 +1195,20 @@ def known_agent_ids() -> set[str]:
 
     ids = {meta["id"] for meta in get_all_agent_metas()}
     ids.update(PHASE_AGENT_IDS)
+    return ids
+
+
+def ordered_agent_ids() -> list[str]:
+    """Known agent ids in a stable order: pipeline, sub-agents, then custom agents.
+
+    Settings maps are written back to YAML in this order, so the same set of agents always
+    produces the same file instead of reshuffling on every save.
+    """
+    ids: list[str] = []
+    for meta in get_all_agent_metas():
+        agent_id = str(meta.get("id") or "").strip()
+        if agent_id and agent_id not in ids:
+            ids.append(agent_id)
     return ids
 
 
@@ -1297,8 +1477,13 @@ def get_sql_settings() -> dict[str, Any]:
 
 
 def get_active_provider_settings() -> dict[str, Any]:
+    """The active connector plus the catalog the Settings form builds its pickers from."""
     provider = get_provider()
-    return {"provider": provider, "settings": get_openrouter_settings()}
+    return {
+        "provider": provider,
+        "connectors": get_connectors(),
+        "settings": get_openrouter_settings(),
+    }
 
 
 def get_agent_model(agent_id: str) -> str:

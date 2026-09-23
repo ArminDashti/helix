@@ -41,6 +41,8 @@
     "skills": "مهارت‌ها",
     "agents": "عامل‌ها",
     "tableDocs": "مستندات جداول",
+    "rag": "RAG",
+    "mcp": "MCP",
     "dbExplorer": "کاوشگر پایگاه داده",
     "admin": "مدیریت",
     "settings": "تنظیمات",
@@ -210,7 +212,11 @@
     "failed": "ناموفق",
     "done": "انجام شد",
     "finished": "تمام شد — نتیجه ذخیره می‌شود.",
-    "errorHint": "جزئیات خطا را ببینید"
+    "errorHint": "جزئیات خطا را ببینید",
+    "questionTitle": "{{name}} به پاسخ شما نیاز دارد",
+    "questionWaiting": "متوقف شد — منتظر پاسخ شماست.",
+    "questionPlaceholder": "پاسخ شما…",
+    "questionSubmit": "ارسال پاسخ"
   },
   "results": {
     "title": "نتایج",
@@ -327,6 +333,7 @@
     "complete": "{{name}} کامل شد"
   },
   "canvas": {
+    "pageBackground": "پس‌زمینه صفحه",
     "title": "کانواس",
     "subtitle": "آنچه در خروجی PDF می‌آید را انتخاب کنید. تنظیمات در همین مرورگر ذخیره می‌شود.",
     "options": "گزینه‌های چیدمان",
@@ -429,14 +436,16 @@
     "allUnreachable": "API در دسترس نیست — هیچ بخشی از تنظیمات بارگذاری نشد.",
     "modelsFail": "بارگذاری مدل‌ها ناموفق بود",
     "modelsError": "مدل‌ها: {{message}}",
-    "llmIntro": "اجراهای تحلیل یک اتصال‌دهنده را صدا می‌زنند: OpenRouter، میزبان سازگار با OpenAI، یا Cursor Headless CLI در پوشه workspace.",
+    "llmIntro": "اجراهای تحلیل یک اتصال‌دهنده را صدا می‌زنند: OpenCode Go، OpenRouter، میزبان سازگار با OpenAI، یا Cursor Headless CLI در پوشه workspace.",
     "refreshModels": "تازه‌سازی مدل‌ها",
     "api": "API",
     "connector": "اتصال‌دهنده",
     "apiOpenrouter": "OpenRouter",
+    "apiOpencodeGo": "OpenCode-Go",
     "apiOpenaiCompatible": "سازگار با OpenAI",
     "apiCursorHeadlessCli": "Cursor-Headless-CLI",
     "baseUrl": "نشانی پایه",
+    "baseUrlManagedHint": "این نشانی برای این اتصال‌دهنده در خود برنامه تنظیم شده است — فقط کلید API لازم است.",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
     "workspace": "مسیر workspace",
     "workspacePlaceholder": "C:/Users/you/project",
@@ -447,6 +456,7 @@
     "apiKeyPastePlaceholder": "کلید API را بچسبانید",
     "apiKeySavedHint": "یک کلید API روی میزبان API ذخیره شده است. برای جایگزینی، کلید جدید را بچسبانید.",
     "apiKeyPasteHint": "کلید API را اینجا بچسبانید. روی میزبان API ذخیره می‌شود، نه در مرورگر.",
+    "getApiKey": "دریافت کلید API {{connector}}",
     "defaultModel": "مدل پیش‌فرض",
     "appName": "نام برنامه",
     "perAgent": "مدل هر عامل",
@@ -454,6 +464,7 @@
     "llmSaved": "تنظیمات مدل زبانی در helix.config.yaml ذخیره شد.",
     "modelsSearch": "جستجوی مدل‌ها…",
     "modelsSearchOpenRouter": "جستجوی مدل‌های OpenRouter…",
+    "modelsSearchConnector": "جستجوی مدل‌های {{connector}}…",
     "llmTesterTitle": "آزمون مدل — اینجا گفت‌وگو کنید",
     "llmTesterHint": "پیامی به مدل پیکربندی‌شده بفرستید تا کلید، نشانی و مدل را بیازمایید. چیزی ذخیره نمی‌شود.",
     "llmTesterEmpty": "هنوز پیامی نیست. امتحان کنید: «سلام، چه مدلی هستی؟»",
@@ -699,6 +710,32 @@
     "sqlDescription": "توضیح SQL",
     "description": "توضیح"
   },
+  "rag": {
+    "subtitle": "بازیابی توأم با تولید",
+    "placeholder": "این بخش فعلاً رزرو شده است — پایگاه‌های دانش RAG اینجا پیکربندی می‌شوند."
+  },
+  "mcp": {
+    "title": "MCP",
+    "subtitle": "سرورهای MCP را تعریف کنید، روشن/خاموش کنید و MCP پایگاه داده SQL Server را پیکربندی کنید.",
+    "loading": "در حال بارگذاری پیکربندی MCP…",
+    "loadFailed": "بارگذاری پیکربندی MCP ناموفق بود",
+    "configPath": "فایل پیکربندی:",
+    "notFound": "فایل mcp.json پیدا نشد — تغییر سرورهای MCP ممکن نیست.",
+    "empty": "هیچ سرور MCP در mcp.json تعریف نشده است.",
+    "listTitle": "سرورهای MCP",
+    "envKeys": "Env",
+    "enable": "فعال‌سازی",
+    "disable": "غیرفعال‌سازی",
+    "enabled": "فعال",
+    "disabled": "غیرفعال",
+    "toggleFailed": "به‌روزرسانی این سرور MCP ناموفق بود",
+    "sqlTitle": "MCP پایگاه داده SQL Server",
+    "sqlDesc": "ورودی SQL Server را با رشته اتصال ثبت‌شده در تنظیمات → پایگاه داده در mcp.json ثبت می‌کند.",
+    "configure": "پیکربندی MCP پایگاه داده SQL Server",
+    "configuring": "در حال پیکربندی…",
+    "configureFailed": "پیکربندی MCP پایگاه داده SQL Server ناموفق بود",
+    "configured": "MCP پایگاه داده SQL Server پیکربندی شد."
+  },
   "dbExplorer": {
     "title": "کاوشگر پایگاه داده",
     "subtitle": "ردیف‌های ابتدا یا انتها را با WHERE، ORDER BY و مرتب‌سازی صعودی/نزولی انتخاب کنید.",
@@ -750,7 +787,7 @@
     "dataAccess": "دسترسی به داده",
     "dataAccessAdmin": "دسترسی کامل SELECT (مدیر)",
     "dataAccessPlaceholder": "مثلاً فقط جداول SalesOrderHeader و Customer برای تحلیل",
-    "dataAccessHint": "به زبان ساده بنویسید این کاربر به کدام داده انبار دسترسی دارد. عامل نگهبان پیش از ذخیره می‌پذیرد یا رد می‌کند.",
+    "dataAccessHint": "به زبان ساده بنویسید این کاربر به کدام داده دسترسی دارد. عامل نگهبان پیش از ذخیره می‌پذیرد یا رد می‌کند.",
     "guideLink": "راهنمای مدیر (PDF)"
   },
   "guide": {

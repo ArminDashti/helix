@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,9 @@ import yaml
 from django.conf import settings
 
 from .agents import AGENT_IDS, SYNC_AGENT_IDS
+from .token_usage import estimate_tokens
+
+logger = logging.getLogger(__name__)
 
 SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,120}$")
 _NUMERIC_PREFIX_RE = re.compile(r"^\d+[-_]")
@@ -30,9 +34,10 @@ RULE_ID_MIGRATION = {
 }
 
 RULE_DISPLAY_NAMES = {
+    "orchester": "Orchester",
     "core-behavior": "Core behavior",
     "output-contract": "Output contract",
-    "warehouse-sql": "Warehouse SQL",
+    "database-sql": "Database SQL",
     "package-payload": "Package payload",
     "guard-prompt": "Guard prompt",
     "match-goal": "Match goal",
@@ -49,6 +54,7 @@ RULE_DISPLAY_NAMES = {
 }
 
 SKILL_DISPLAY_NAMES = {
+    "orchestrate-pipeline": "Orchestrate pipeline",
     "echarts-response": "ECharts response",
     "sql-safety": "SQL safety",
     "text-report": "Text report",
@@ -238,6 +244,11 @@ def references_dir() -> Path:
     return root() / "references"
 
 
+def rag_dir() -> Path:
+    """Knowledge documents the researcher retrieves from (lexical RAG)."""
+    return root() / "rag"
+
+
 def rules_dir() -> Path:
     return root() / "rules"
 
@@ -251,7 +262,7 @@ def skill_assignments_path() -> Path:
 
 
 def ensure_dirs() -> None:
-    for path in (instructions_dir(), references_dir(), rules_dir(), skills_dir()):
+    for path in (instructions_dir(), references_dir(), rag_dir(), rules_dir(), skills_dir()):
         path.mkdir(parents=True, exist_ok=True)
     if not assignments_path().exists():
         assignments_path().write_text("{}", encoding="utf-8")
@@ -365,7 +376,7 @@ def save_skill_assignments(assignments: dict[str, list[str]]) -> dict[str, list[
     return cleaned
 
 
-def _parse_agent_md_skill_ids(agent_id: str) -> list[str]:
+def _parse_agent_md_list(agent_id: str, key: str) -> list[str]:
     path = _agents_source_dir() / agent_id / "AGENT.md"
     if not path.is_file():
         return []
@@ -384,10 +395,18 @@ def _parse_agent_md_skill_ids(agent_id: str) -> list[str]:
         return []
     if not isinstance(data, dict):
         return []
-    raw = data.get("skills") or []
+    raw = data.get(key) or []
     if not isinstance(raw, list):
         return []
     return [str(item).strip() for item in raw if str(item).strip()]
+
+
+def _parse_agent_md_skill_ids(agent_id: str) -> list[str]:
+    return _parse_agent_md_list(agent_id, "skills")
+
+
+def _parse_agent_md_rule_ids(agent_id: str) -> list[str]:
+    return _parse_agent_md_list(agent_id, "rules")
 
 
 def _skill_exists_in_shared(skill_id: str) -> bool:
@@ -397,36 +416,41 @@ def _skill_exists_in_shared(skill_id: str) -> bool:
 
 
 def default_skill_assignments() -> dict[str, list[str]]:
-    """Map scope/skill_id → orchester (sole runtime agent; phase folders are editors)."""
+    """Map scope/skill_id → the agent that owns the skill (one skill per agent).
+
+    The owning agent folder decides the scope; a skill that also exists under `shared/` is
+    reusable, which is the only way one skill file can serve several agents.
+    """
     inverted: dict[str, list[str]] = {}
     for agent_id in SYNC_AGENT_IDS:
         for skill_id in _parse_agent_md_skill_ids(agent_id):
             scope = "shared" if _skill_exists_in_shared(skill_id) else agent_id
             key = _skill_assign_key(scope, skill_id)
             agents = inverted.setdefault(key, [])
-            if "orchester" not in agents:
-                agents.append("orchester")
+            if agent_id not in agents:
+                agents.append(agent_id)
     return inverted
 
 
 def default_rule_assignments() -> dict[str, list[str]]:
-    """All seed rules → orchester (phase folders remain editable scopes)."""
+    """Map rule_id → the one agent that owns it (one rule per agent).
+
+    `<agent>/rules/<nn>-<rule>.md` belongs to that agent, and an explicit `rules:` list in
+    `AGENT.md` may name the rule instead. There is no army-wide rule pool: a shared rule would
+    be a second rule for every agent.
+    """
     agents_root = _agents_source_dir()
     assignments: dict[str, list[str]] = {}
     for agent_id in SYNC_AGENT_IDS:
+        stems: list[str] = []
         rules_folder = agents_root / agent_id / "rules"
-        if not rules_folder.is_dir():
-            continue
-        for rule_file in sorted(rules_folder.glob("*.md")):
-            stem = _strip_numeric_prefix(rule_file.stem)
-            bucket = assignments.setdefault(stem, [])
-            if "orchester" not in bucket:
-                bucket.append("orchester")
-    shared_rules = agents_root / "_shared" / "rules"
-    if shared_rules.is_dir():
-        for rule_file in sorted(shared_rules.glob("*.md")):
-            stem = _strip_numeric_prefix(rule_file.stem)
-            assignments[stem] = ["orchester"]
+        if rules_folder.is_dir():
+            stems = [
+                _strip_numeric_prefix(rule_file.stem)
+                for rule_file in sorted(rules_folder.glob("*.md"))
+            ]
+        for stem in stems or _parse_agent_md_rule_ids(agent_id):
+            assignments[stem] = [agent_id]
     return assignments
 
 
@@ -532,6 +556,48 @@ def list_skills(scope: str | None = None) -> list[dict]:
             collect(agent_id)
 
     return items
+
+
+def agent_asset_issues() -> list[str]:
+    """Report every agent that breaks the one-rule-and-one-skill contract.
+
+    Assignment drift is silent otherwise: an agent with no rule, or a rule reaching three agents,
+    still runs — just without the constraints it is supposed to carry. Called after each sync and
+    asserted in `api.tests`.
+    """
+    issues: list[str] = []
+    rules = [rule for rule in list_rules() if not rule.get("disabled")]
+    skills = [skill for skill in list_skills() if not skill.get("disabled")]
+
+    for agent_id in SYNC_AGENT_IDS:
+        owned_rules = [rule["id"] for rule in rules if agent_id in (rule.get("agents") or [])]
+        owned_skills = [skill["id"] for skill in skills if agent_id in (skill.get("agents") or [])]
+        if len(owned_rules) != 1:
+            issues.append(
+                f"{agent_id}: expected 1 rule, found {len(owned_rules)} "
+                f"({', '.join(owned_rules) or 'none'})"
+            )
+        if len(owned_skills) != 1:
+            issues.append(
+                f"{agent_id}: expected 1 skill, found {len(owned_skills)} "
+                f"({', '.join(owned_skills) or 'none'})"
+            )
+
+    for rule in rules:
+        assigned = rule.get("agents") or []
+        if len(assigned) != 1:
+            issues.append(
+                f"rule {rule['id']}: expected 1 agent, found {len(assigned)} "
+                f"({', '.join(assigned) or 'none'})"
+            )
+    for skill in skills:
+        assigned = skill.get("agents") or []
+        if len(assigned) != 1:
+            issues.append(
+                f"skill {skill['scope']}/{skill['id']}: expected 1 agent, found {len(assigned)} "
+                f"({', '.join(assigned) or 'none'})"
+            )
+    return issues
 
 
 def get_skill(scope: str, skill_id: str) -> dict:
@@ -797,6 +863,9 @@ def sync_pipeline_agents_from_source() -> None:
     save_assignments(default_rule_assignments())
     save_skill_assignments(default_skill_assignments())
 
+    for issue in agent_asset_issues():
+        logger.warning("agent asset contract: %s", issue)
+
 
 def migrate_sql_agent_id() -> None:
     """Rename leftover sql_guardian skill folders and assignment ids."""
@@ -1000,6 +1069,89 @@ def update_reference(name: str, content: str) -> dict:
 def delete_reference(name: str) -> None:
     stem = _safe_stem(name)
     path = references_dir() / f"{stem}.md"
+    if not path.exists():
+        raise FileNotFoundError(stem)
+    path.unlink()
+
+
+# --- RAG knowledge base ---
+#
+# Knowledge documents the researcher retrieves from at run time (see rag_context.py). Each file
+# is one document; its token count is stored with it so the UI can show the cost of the corpus
+# and of a single run's retrieval without a tokenizer round-trip.
+
+
+def _rag_item(path: Path) -> dict[str, Any]:
+    content = path.read_text(encoding="utf-8")
+    meta = _parse_md_meta(content)
+    return {
+        "id": path.stem,
+        "title": meta["name"] or _humanize_id(path.stem),
+        "filename": path.name,
+        "content": content,
+        "chars": len(content),
+        "tokens": estimate_tokens(content),
+        "updated_at": int(path.stat().st_mtime),
+    }
+
+
+def list_rag_docs() -> list[dict]:
+    ensure_dirs()
+    items = [_rag_item(path) for path in sorted(rag_dir().glob("*.md"))]
+    items.sort(key=lambda item: str(item.get("title") or "").lower())
+    return items
+
+
+def rag_totals() -> dict:
+    items = list_rag_docs()
+    return {
+        "docs": len(items),
+        "chars": sum(int(item.get("chars") or 0) for item in items),
+        "tokens": sum(int(item.get("tokens") or 0) for item in items),
+    }
+
+
+def get_rag_doc(doc_id: str) -> dict:
+    stem = _safe_stem(doc_id)
+    path = rag_dir() / f"{stem}.md"
+    if not path.exists():
+        raise FileNotFoundError(stem)
+    return _rag_item(path)
+
+
+def create_rag_doc(doc_id: str, content: str = "", title: str | None = None) -> dict:
+    ensure_dirs()
+    stem = _safe_stem(doc_id)
+    path = rag_dir() / f"{stem}.md"
+    if path.exists():
+        raise FileExistsError(stem)
+    text = content if content else ""
+    if title:
+        text = _set_md_meta(text, name=title)
+    path.write_text(text, encoding="utf-8")
+    return get_rag_doc(stem)
+
+
+def update_rag_doc(
+    doc_id: str,
+    content: str,
+    *,
+    title: str | None = None,
+) -> dict:
+    stem = _safe_stem(doc_id)
+    path = rag_dir() / f"{stem}.md"
+    if not path.exists():
+        raise FileNotFoundError(stem)
+    text = content if content is not None else ""
+    if title is not None:
+        text = _set_md_meta(text, name=title)
+    path.write_text(text, encoding="utf-8")
+    return get_rag_doc(stem)
+
+
+def delete_rag_doc(doc_id: str) -> None:
+    stem = _safe_stem(doc_id)
+    path = rag_dir() / f"{stem}.md"
     if not path.exists():
         raise FileNotFoundError(stem)
     path.unlink()

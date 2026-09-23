@@ -182,7 +182,7 @@ npm run dev</pre>
           <strong>مدل زبانی</strong>
         </p>
         <p>
-          اجراهای تحلیل یک API گفت‌وگوی سازگار با OpenAI را صدا می‌زنند. سه
+          اجراهای تحلیل یک API گفت‌وگوی سازگار با OpenAI را صدا می‌زنند. چهار
           ارائه‌دهنده پشتیبانی می‌شود:
         </p>
         <table>
@@ -193,6 +193,13 @@ npm run dev</pre>
             </tr>
           </thead>
           <tbody>
+            <tr>
+              <td>OpenCode-Go</td>
+              <td>
+                اشتراک OpenCode Go؛ فقط کلید API لازم است — نشانی پایه و
+                فهرست مدل‌ها را خود برنامه تنظیم می‌کند
+              </td>
+            </tr>
             <tr>
               <td>OpenRouter</td>
               <td>پیش‌فرض رایج؛ مدل‌های متنوع از یک کلید</td>
@@ -209,7 +216,11 @@ npm run dev</pre>
         </table>
         <h3>فیلدهای مهم</h3>
         <ul>
-          <li><strong>نشانی پایه</strong> — مثلاً OpenRouter یا OpenAI</li>
+          <li>
+            <strong>نشانی پایه</strong> — مثلاً OpenRouter یا OpenAI؛ برای
+            اتصال‌دهنده‌هایی که نشانی‌شان ثابت است (مثل OpenCode-Go) این فیلد
+            فقط‌خواندنی است
+          </li>
           <li>
             <strong>کلید API</strong> — روی میزبان API ذخیره می‌شود، نه در
             مرورگر

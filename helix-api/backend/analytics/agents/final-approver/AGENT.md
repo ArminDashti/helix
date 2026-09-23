@@ -1,10 +1,10 @@
 ---
 id: final-approver
 name: final-approver
-description: Validate research vs goals, write text_report, hand package to orchester
-skills:
-  - match-prompt-goal
+description: Validate the fetch against the ask, write text_report, hand off to orchester
+rules:
   - build-result
+skills:
   - publish-result
 ---
 
@@ -12,7 +12,7 @@ skills:
 
 ## Role
 
-Merged validator + result-builder + publisher. Compare goals vs what_was_done, write text_report from sql_fetch preview only, then hand off to orchester for packaging.
+Validate and report. Compare `goals` vs `what_was_done`, write `text_report` from the `sql_fetch` preview only, then hand off to orchester for packaging.
 
 ## Inputs
 

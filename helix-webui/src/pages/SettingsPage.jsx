@@ -60,7 +60,9 @@ const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 const EMPTY_OPENROUTER = {
   token: "",
   base_url: OPENROUTER_BASE_URL,
-  default_model: "composer-2.5",
+  // No vendor model constant here: the API fills this from the active connector on load, and a
+  // stale default would be what gets saved back if that load ever failed.
+  default_model: "",
   agents: {},
   token_configured: false,
   workspace: "",
@@ -74,6 +76,53 @@ const LLM_AGENT_IDS = [
   "final-approver",
   "web-searcher",
 ];
+
+// The API is the source of truth for which connectors exist; these keys only translate the ones
+// the webui already knows. A connector added server-side still shows up here, labelled by the API.
+const CONNECTOR_LABEL_KEYS = {
+  openrouter: "settings.apiOpenrouter",
+  opencode_go: "settings.apiOpencodeGo",
+  openai_compatible: "settings.apiOpenaiCompatible",
+  cursor_headless_cli: "settings.apiCursorHeadlessCli",
+};
+
+function connectorLabel(t, connector) {
+  const key = CONNECTOR_LABEL_KEYS[connector?.id];
+  if (key) return t(key);
+  return connector?.label || connector?.id || "";
+}
+
+// Mirrors the backend connector seeding: on a switch only app-owned values (empty, or equal to a
+// connector default) are replaced, so a base URL or model the admin typed survives intact.
+function seedConnectorFields(prev, nextConnector, prevConnector) {
+  const nextUrl = (nextConnector?.base_url || "").trim();
+  const prevUrl = (prevConnector?.base_url || "").trim();
+  const currentUrl = (prev.base_url || "").trim();
+  let baseUrl = currentUrl;
+  if (nextUrl && (!currentUrl || currentUrl === prevUrl || currentUrl === nextUrl)) {
+    baseUrl = nextUrl;
+  } else if (!nextUrl && currentUrl && currentUrl === prevUrl) {
+    baseUrl = "";
+  }
+
+  const nextModel = (nextConnector?.default_model || "").trim();
+  const prevModel = (prevConnector?.default_model || "").trim();
+  const currentModel = (prev.default_model || "").trim();
+  const defaultModel =
+    nextModel && (!currentModel || currentModel === prevModel || currentModel === nextModel)
+      ? nextModel
+      : currentModel || prevModel;
+
+  const agents = {};
+  for (const [agentId, entry] of Object.entries(prev.agents || {})) {
+    const model = (entry?.model || "").trim();
+    const adoptNext =
+      nextModel && (!model || model === prevModel || model === nextModel);
+    agents[agentId] = adoptNext ? { ...entry, model: nextModel } : { ...entry };
+  }
+
+  return { ...prev, base_url: baseUrl, default_model: defaultModel, agents };
+}
 
 const ADMIN_GUIDE_PDF = assetUrl("docs/fa/helix-admin-guide.pdf");
 
@@ -315,18 +364,7 @@ export default function SettingsPage() {
     [locale],
   );
 
-  const apiOptions = useMemo(
-    () => [
-      { value: "openrouter", label: t("settings.apiOpenrouter") },
-      { value: "openai_compatible", label: t("settings.apiOpenaiCompatible") },
-      {
-        value: "cursor_headless_cli",
-        label: t("settings.apiCursorHeadlessCli"),
-      },
-    ],
-    [t],
-  );
-
+  const [connectors, setConnectors] = useState([]);
   const [dbForm, setDbForm] = useState(EMPTY_DB);
   const [connectionString, setConnectionString] = useState("");
   const [connectionStringDirty, setConnectionStringDirty] = useState(false);
@@ -351,6 +389,39 @@ export default function SettingsPage() {
   const llmReady = isCursorCli
     ? Boolean((orForm.workspace || "").trim())
     : activeTokenConfigured;
+
+  const connectorById = useMemo(() => {
+    const map = {};
+    for (const connector of connectors) {
+      if (connector?.id) map[connector.id] = connector;
+    }
+    return map;
+  }, [connectors]);
+
+  const activeConnector = connectorById[provider] || null;
+  // With no catalog yet (or an unreachable API) the picker still offers the active connector, so
+  // the Connector field is never empty; field visibility falls back to the pre-connector rules.
+  const apiOptions = useMemo(
+    () =>
+      connectors.length
+        ? connectors.map((connector) => ({
+            value: connector.id,
+            label: connectorLabel(t, connector),
+          }))
+        : [{ value: provider, label: connectorLabel(t, { id: provider }) }],
+    [connectors, provider, t],
+  );
+  const showsBaseUrl = activeConnector
+    ? activeConnector.asks_base_url !== false
+    : !isCursorCli;
+  const showsWorkspace = activeConnector
+    ? activeConnector.asks_workspace !== false
+    : true;
+  const showsApiKey = activeConnector
+    ? activeConnector.api_key_required !== false
+    : !isCursorCli;
+  // A connector that owns its endpoint shows it read-only instead of asking for it.
+  const managedBaseUrl = showsBaseUrl ? "" : activeConnector?.base_url || "";
 
   async function reloadSampleTiers() {
     try {
@@ -474,12 +545,15 @@ export default function SettingsPage() {
 
         try {
           const providerData = await fetchProviderSettings();
-          const raw = providerData.provider;
-          const nextProvider =
-            raw === "openai_compatible" || raw === "cursor_headless_cli"
-              ? raw
-              : "openrouter";
-          setProvider(nextProvider);
+          const catalog = Array.isArray(providerData.connectors)
+            ? providerData.connectors.filter((entry) => entry?.id)
+            : [];
+          setConnectors(catalog);
+          const raw = String(providerData.provider || "").toLowerCase();
+          const saved = catalog.some((entry) => entry.id === raw)
+            ? raw
+            : catalog[0]?.id || "openrouter";
+          setProvider(saved);
           anyOk = true;
         } catch (err) {
           failures.push({
@@ -599,16 +673,10 @@ export default function SettingsPage() {
   }
 
   function handleApiChange(next) {
+    const nextConnector = connectorById[next] || null;
+    const prevConnector = activeConnector;
     setProvider(next);
-    if (next === "openrouter") {
-      setOrForm((prev) => {
-        const current = (prev.base_url || "").trim();
-        if (!current || current === OPENROUTER_BASE_URL) {
-          return { ...prev, base_url: OPENROUTER_BASE_URL };
-        }
-        return prev;
-      });
-    }
+    setOrForm((prev) => seedConnectorFields(prev, nextConnector, prevConnector));
   }
 
   async function handleSaveGeneral(event) {
@@ -705,15 +773,18 @@ export default function SettingsPage() {
         workspace: (orForm.workspace || "").trim(),
         mode: "agent",
       };
-      if (!isCursorCli) {
-        payload.base_url = (orForm.base_url || "").trim();
-        if (orForm.token?.trim()) {
-          payload.token = orForm.token.trim();
-        }
+      if (showsApiKey && orForm.token?.trim()) {
+        payload.token = orForm.token.trim();
       }
-      const data = await saveOpenRouterSettings(payload);
+      // A connector that owns its endpoint pins it server-side — never send one back over it.
+      if (showsBaseUrl) {
+        payload.base_url = (orForm.base_url || "").trim();
+      }
+      // Switch the connector before writing settings: its defaults (endpoint, model, key env) are
+      // then already in place for the settings write that follows.
       const providerData = await saveProvider(provider);
       setProvider(providerData.provider || provider);
+      const data = await saveOpenRouterSettings(payload);
       setOrForm({ ...EMPTY_OPENROUTER, ...data.openrouter, token: "" });
       setStatus(t("settings.llmSaved"));
       checkConnection({ silent: true });
@@ -781,9 +852,13 @@ export default function SettingsPage() {
   );
 
   const modelPlaceholder =
-    provider === "openai_compatible"
-      ? t("settings.modelsSearch")
-      : t("settings.modelsSearchOpenRouter");
+    activeConnector?.id === "openrouter"
+      ? t("settings.modelsSearchOpenRouter")
+      : activeConnector && activeConnector.id !== "openai_compatible"
+        ? t("settings.modelsSearchConnector", {
+            connector: connectorLabel(t, activeConnector),
+          })
+        : t("settings.modelsSearch");
 
   function sectionErrorMessage(failure) {
     const message =
@@ -955,7 +1030,7 @@ export default function SettingsPage() {
             </select>
           </Field>
 
-          {!isCursorCli ? (
+          {showsBaseUrl ? (
             <Field label={t("settings.baseUrl")} id="llm_base_url">
               <input
                 id="llm_base_url"
@@ -963,33 +1038,51 @@ export default function SettingsPage() {
                 onChange={(e) => updateOrField("base_url", e.target.value)}
                 className={inputClass}
                 placeholder={
-                  provider === "openrouter"
-                    ? OPENROUTER_BASE_URL
-                    : t("settings.baseUrlPlaceholder")
+                  activeConnector?.base_url || t("settings.baseUrlPlaceholder")
                 }
                 spellCheck={false}
               />
             </Field>
+          ) : managedBaseUrl ? (
+            <>
+              <Field label={t("settings.baseUrl")} id="llm_base_url_fixed">
+                <input
+                  id="llm_base_url_fixed"
+                  value={managedBaseUrl}
+                  readOnly
+                  disabled
+                  className={inputClass}
+                  spellCheck={false}
+                />
+              </Field>
+              <p className="text-xs text-muted">
+                {t("settings.baseUrlManagedHint")}
+              </p>
+            </>
           ) : null}
 
-          <Field label={t("settings.workspace")} id="llm_workspace">
-            <input
-              id="llm_workspace"
-              value={orForm.workspace || ""}
-              onChange={(e) => updateOrField("workspace", e.target.value)}
-              className={inputClass}
-              placeholder={t("settings.workspacePlaceholder")}
-              spellCheck={false}
-              required={isCursorCli}
-            />
-          </Field>
-          <p className="text-xs text-muted">
-            {isCursorCli
-              ? t("settings.workspaceHintCursorCli")
-              : t("settings.workspaceHint")}
-          </p>
+          {showsWorkspace ? (
+            <>
+              <Field label={t("settings.workspace")} id="llm_workspace">
+                <input
+                  id="llm_workspace"
+                  value={orForm.workspace || ""}
+                  onChange={(e) => updateOrField("workspace", e.target.value)}
+                  className={inputClass}
+                  placeholder={t("settings.workspacePlaceholder")}
+                  spellCheck={false}
+                  required={isCursorCli}
+                />
+              </Field>
+              <p className="text-xs text-muted">
+                {isCursorCli
+                  ? t("settings.workspaceHintCursorCli")
+                  : t("settings.workspaceHint")}
+              </p>
+            </>
+          ) : null}
 
-          {!isCursorCli ? (
+          {showsApiKey ? (
             <>
               <Field label={t("settings.apiKey")} id="llm_token">
                 <input
@@ -1012,6 +1105,20 @@ export default function SettingsPage() {
                   ? t("settings.apiKeySavedHint")
                   : t("settings.apiKeyPasteHint")}
               </p>
+              {activeConnector?.key_url ? (
+                <p className="text-xs">
+                  <a
+                    href={activeConnector.key_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-moss underline decoration-line underline-offset-2 hover:text-ink"
+                  >
+                    {t("settings.getApiKey", {
+                      connector: connectorLabel(t, activeConnector),
+                    })}
+                  </a>
+                </p>
+              ) : null}
             </>
           ) : null}
 
@@ -1045,7 +1152,7 @@ export default function SettingsPage() {
                 >
                   <ModelCombobox
                     id={`agent-${agentId}`}
-                    value={orForm.agents?.[agentId]?.model || "composer-2.5"}
+                    value={orForm.agents?.[agentId]?.model || orForm.default_model || ""}
                     onChange={(v) => updateAgentModel(agentId, v)}
                     models={models}
                     loading={modelsLoading}

@@ -10,7 +10,7 @@ import {
   CircleDot,
   Play,
 } from "lucide-react";
-import { fetchAgents, streamRun, createResult } from "../api/client.js";
+import { fetchAgents, streamRun, answerRun, createResult } from "../api/client.js";
 import ErrorModal from "../components/ErrorModal.jsx";
 import IconButton from "../components/IconButton.jsx";
 import PageHeader from "../components/PageHeader.jsx";
@@ -78,8 +78,10 @@ export default function AnalysisPage() {
   const [runMeta, setRunMeta] = useState({});
   const [runStartedAt, setRunStartedAt] = useState(null);
   const [nameById, setNameById] = useState({});
+  const [pendingQuestion, setPendingQuestion] = useState(null);
   const [llmError, setLlmError] = useState(null);
   const abortRef = useRef(null);
+  const answerResolveRef = useRef(null);
 
   const modes = useMemo(
     () =>
@@ -197,42 +199,19 @@ export default function AnalysisPage() {
 
     try {
       const startedAt = performance.now();
-      const final = await streamRun(payload, (event) => {
-        if (event?.event === "step") {
-          setRunMessages((prev) => [
-            ...prev,
-            {
-              agent_id: event.agent_id,
-              node_id: event.node_id,
-              message: event.message,
-              status: event.status,
-              result: event.result,
-              at: event.at,
-              elapsed_s: event.elapsed_s,
-              run_id: event.run_id,
-              sql: event.sql,
-              row_count: event.row_count,
-              handoff: event.handoff,
-            },
-          ]);
-        } else if (event?.event === "error" && event.error) {
-          const body = translateKnownMessage(t, String(event.error));
-          if (
-            event.kind === "rejection" ||
-            event.agent_id === "guardian" ||
-            event.agent_id === "task_validator"
-          ) {
-            setRunError({
-              kind: "rejection",
-              title: t("errors.rejection.title"),
-              message: body,
-              reasons: body,
-            });
-          } else {
-            setRunError(body);
-          }
-        }
-      }, controller.signal);
+      let streamed = await streamRun(payload, handleStreamEvent, controller.signal);
+      // A run can stop and ask questions (before it starts or mid-flight); every answer continues
+      // the same run from the point it stopped.
+      while (streamed?.paused) {
+        const answers = await askOperator(streamed.question);
+        if (!answers) return;
+        streamed = await answerRun(
+          { runId: streamed.question.run_id, answers },
+          handleStreamEvent,
+          controller.signal,
+        );
+      }
+      const final = streamed;
       const clientDurationS = (performance.now() - startedAt) / 1000;
       const durationS =
         typeof final?.duration_s === "number" && Number.isFinite(final.duration_s)
@@ -272,11 +251,69 @@ export default function AnalysisPage() {
     }
   }
 
+  function handleStreamEvent(event) {
+    if (event?.event === "step") {
+      setRunMessages((prev) => [
+        ...prev,
+        {
+          agent_id: event.agent_id,
+          node_id: event.node_id,
+          message: event.message,
+          status: event.status,
+          result: event.result,
+          at: event.at,
+          elapsed_s: event.elapsed_s,
+          run_id: event.run_id,
+          sql: event.sql,
+          row_count: event.row_count,
+          handoff: event.handoff,
+        },
+      ]);
+    } else if (event?.event === "error" && event.error) {
+      const body = translateKnownMessage(t, String(event.error));
+      if (
+        event.kind === "rejection" ||
+        event.agent_id === "guardian" ||
+        event.agent_id === "task_validator"
+      ) {
+        setRunError({
+          kind: "rejection",
+          title: t("errors.rejection.title"),
+          message: body,
+          reasons: body,
+        });
+      } else {
+        setRunError(body);
+      }
+    }
+  }
+
+  /** Show a paused run's questions in the progress modal and wait for the operator's answers. */
+  function askOperator(question) {
+    setPendingQuestion(question);
+    return new Promise((resolve) => {
+      answerResolveRef.current = resolve;
+    });
+  }
+
+  function submitAnswers(answers) {
+    setPendingQuestion(null);
+    const resolve = answerResolveRef.current;
+    answerResolveRef.current = null;
+    resolve?.(answers);
+  }
+
   function dismissModal() {
     if (running) {
       abortRef.current?.abort();
       setRunning(false);
     }
+    // Never leave a run waiting on an answer nobody can give.
+    if (answerResolveRef.current) {
+      answerResolveRef.current(null);
+      answerResolveRef.current = null;
+    }
+    setPendingQuestion(null);
     setModalOpen(false);
     setRunError(null);
   }
@@ -426,6 +463,8 @@ export default function AnalysisPage() {
         nameById={nameById}
         meta={runMeta}
         startedAt={runStartedAt}
+        question={pendingQuestion}
+        onSubmitAnswers={submitAnswers}
       />
     </div>
   );

@@ -67,6 +67,7 @@ export const DEFAULT_PDF_DESIGN = {
   orientation: "landscape",
   companyLogoDataUrl: "",
   footerText: "",
+  pageBackgroundColor: "#ffffff",
   elements: defaultElements(),
 };
 
@@ -104,6 +105,11 @@ export function normalizePdfDesign(raw = {}) {
     companyLogoDataUrl:
       typeof raw.companyLogoDataUrl === "string" ? raw.companyLogoDataUrl : "",
     footerText: typeof raw.footerText === "string" ? raw.footerText : "",
+    pageBackgroundColor:
+      typeof raw.pageBackgroundColor === "string" &&
+      /^#[0-9a-fA-F]{6}$/.test(raw.pageBackgroundColor)
+        ? raw.pageBackgroundColor
+        : DEFAULT_PDF_DESIGN.pageBackgroundColor,
     elements: defaultElements(),
   };
 

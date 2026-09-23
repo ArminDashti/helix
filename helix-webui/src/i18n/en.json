@@ -41,6 +41,8 @@
     "skills": "Skills",
     "agents": "Agents",
     "tableDocs": "Table docs",
+    "rag": "RAG",
+    "mcp": "MCP",
     "dbExplorer": "DB Explorer",
     "admin": "Admin",
     "settings": "Settings",
@@ -210,7 +212,11 @@
     "failed": "Failed",
     "done": "Done",
     "finished": "Finished — result will be saved.",
-    "errorHint": "See error detail below"
+    "errorHint": "See error detail below",
+    "questionTitle": "{{name}} needs an answer",
+    "questionWaiting": "Paused — waiting for your answer.",
+    "questionPlaceholder": "Your answer…",
+    "questionSubmit": "Send answer"
   },
   "results": {
     "title": "Results",
@@ -327,6 +333,7 @@
     "complete": "{{name}} complete"
   },
   "canvas": {
+    "pageBackground": "Page background",
     "title": "Canvas",
     "subtitle": "Choose what appears in PDF exports. Settings are saved in this browser.",
     "options": "Layout options",
@@ -429,14 +436,16 @@
     "allUnreachable": "API unreachable — could not load any settings section.",
     "modelsFail": "Failed to load models",
     "modelsError": "Models: {{message}}",
-    "llmIntro": "Analysis runs call one connector: OpenRouter, another OpenAI-compatible host, or Cursor Headless CLI in a workspace folder.",
+    "llmIntro": "Analysis runs call one connector: OpenCode Go, OpenRouter, another OpenAI-compatible host, or Cursor Headless CLI in a workspace folder.",
     "refreshModels": "Refresh models",
     "api": "API",
     "connector": "Connector",
     "apiOpenrouter": "OpenRouter",
+    "apiOpencodeGo": "OpenCode-Go",
     "apiOpenaiCompatible": "OpenAI-compatible",
     "apiCursorHeadlessCli": "Cursor-Headless-CLI",
     "baseUrl": "Base URL",
+    "baseUrlManagedHint": "Provided by the app for this connector — only the API key is needed.",
     "baseUrlPlaceholder": "https://api.openai.com/v1",
     "workspace": "Workspace path",
     "workspacePlaceholder": "C:/Users/you/project",
@@ -447,6 +456,7 @@
     "apiKeyPastePlaceholder": "Paste API key",
     "apiKeySavedHint": "An API key is saved on the API host. Paste a new key to replace it.",
     "apiKeyPasteHint": "Paste the API key here. It is saved on the API host, not in the browser.",
+    "getApiKey": "Get an {{connector}} API key",
     "defaultModel": "Default model",
     "appName": "App name",
     "perAgent": "Per-agent models",
@@ -454,6 +464,7 @@
     "llmSaved": "LLM settings saved to helix.config.yaml.",
     "modelsSearch": "Search models…",
     "modelsSearchOpenRouter": "Search OpenRouter models…",
+    "modelsSearchConnector": "Search {{connector}} models…",
     "llmTesterTitle": "Test the model — chat here",
     "llmTesterHint": "Send a message to the currently configured LLM to verify the API key, base URL and model work. No data is saved.",
     "llmTesterEmpty": "No messages yet. Try: 'Hello, what model are you?'",
@@ -699,6 +710,32 @@
     "sqlDescription": "sql-description",
     "description": "description"
   },
+  "rag": {
+    "subtitle": "Retrieval-augmented generation",
+    "placeholder": "This section is reserved for now — RAG knowledge bases will be configured here."
+  },
+  "mcp": {
+    "title": "MCP",
+    "subtitle": "Define MCP servers, toggle them on or off, and configure the SQL Server MCP.",
+    "loading": "Loading MCP configuration…",
+    "loadFailed": "Failed to load MCP configuration",
+    "configPath": "Config file:",
+    "notFound": "mcp.json was not found — MCP servers cannot be changed.",
+    "empty": "No MCP servers defined in mcp.json.",
+    "listTitle": "MCP servers",
+    "envKeys": "Env",
+    "enable": "Enable",
+    "disable": "Disable",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "toggleFailed": "Could not update this MCP server",
+    "sqlTitle": "SQL Server MCP",
+    "sqlDesc": "Writes the SQL Server entry into mcp.json using the connection string already configured in Settings → Database.",
+    "configure": "Configure SQL Server MCP",
+    "configuring": "Configuring…",
+    "configureFailed": "Could not configure the SQL Server MCP",
+    "configured": "SQL Server MCP configured."
+  },
   "dbExplorer": {
     "title": "DB Explorer",
     "subtitle": "SELECT top or tail rows with WHERE, ORDER BY, and ASC/DESC sort.",
@@ -750,7 +787,7 @@
     "dataAccess": "Data access",
     "dataAccessAdmin": "Full SELECT (admin)",
     "dataAccessPlaceholder": "e.g. May read SalesOrderHeader and Customer for analytics only",
-    "dataAccessHint": "Describe in plain language which warehouse data this user may access. The guardian agent accepts or rejects before the user is saved.",
+    "dataAccessHint": "Describe in plain language which data this user may access. The guardian agent accepts or rejects before the user is saved.",
     "guideLink": "Admin guide (PDF)"
   },
   "guide": {

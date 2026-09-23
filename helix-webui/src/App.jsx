@@ -19,6 +19,8 @@ import NewSkillPage from "./pages/NewSkillPage.jsx";
 import CanvasPage from "./pages/CanvasPage.jsx";
 import ResultsPage from "./pages/ResultsPage.jsx";
 import LogsPage from "./pages/LogsPage.jsx";
+import McpPage from "./pages/McpPage.jsx";
+import RagPage from "./pages/RagPage.jsx";
 import RulesPage from "./pages/RulesPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import SkillsPage from "./pages/SkillsPage.jsx";
@@ -52,6 +54,8 @@ export default function App() {
             <Route path="agents/:agentId/assignments" element={<AgentAssignmentsPage />} />
             <Route path="agents/:agentId" element={<EditAgentPage />} />
             <Route path="docs" element={<DocsPage />} />
+            <Route path="rag" element={<RagPage />} />
+            <Route path="mcp" element={<McpPage />} />
             <Route path="db-explorer" element={<DbExplorerPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="admin" element={<AdminPage />} />

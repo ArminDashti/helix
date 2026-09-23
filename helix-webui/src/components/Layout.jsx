@@ -3,11 +3,13 @@ import { NavLink, Outlet } from "react-router-dom";
 import {
   BarChart3,
   Bot,
+  Brain,
   Database,
   LayoutTemplate,
   Monitor,
   Moon,
   Play,
+  Plug,
   Scale,
   ScrollText,
   Settings,
@@ -124,6 +126,8 @@ export default function Layout() {
     { to: "/skills", label: t("nav.skills"), icon: Sparkles },
     { to: "/agents", label: t("nav.agents"), icon: Bot },
     { to: "/docs", label: t("nav.tableDocs"), icon: Table2 },
+    { to: "/rag", label: t("nav.rag"), icon: Brain },
+    { to: "/mcp", label: t("nav.mcp"), icon: Plug },
     { to: "/db-explorer", label: t("nav.dbExplorer"), icon: Database },
   ];
 

@@ -1,4 +1,4 @@
-"""Public web search for the web-searcher sub-agent (no warehouse connection)."""
+"""Public web search for the web-searcher sub-agent (no database connection)."""
 
 from __future__ import annotations
 

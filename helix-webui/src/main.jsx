@@ -2,6 +2,7 @@ import {
   applyLocale,
   readStoredLocale,
 } from "./i18n/applyLocale.js";
+import { installAutoRtl } from "./lib/autoRtl.js";
 
 const THEME_STORAGE_KEY = "helix-theme";
 
@@ -34,3 +35,5 @@ createRoot(document.getElementById("root")).render(
     <App />
   </StrictMode>,
 );
+
+installAutoRtl();

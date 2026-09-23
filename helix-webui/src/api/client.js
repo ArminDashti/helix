@@ -704,6 +704,22 @@ export async function runDbExplorerQuery(payload) {
   });
 }
 
+export async function fetchMcps() {
+  return requestJson("/api/mcp/");
+}
+
+export async function toggleMcp(name, enabled) {
+  return requestJson("/api/mcp/toggle/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, enabled }),
+  });
+}
+
+export async function configureSqlServerMcp() {
+  return requestJson("/api/mcp/sqlserver/", { method: "POST" });
+}
+
 /**
  * Stream a run via SSE (POST). Calls onEvent for each parsed JSON payload.
  * @returns {Promise<{mode: string, text_report: string|null, echarts_option: object|null, grid?: object|null, used_demo?: boolean}>}
@@ -778,6 +794,7 @@ export async function streamRun(
   const decoder = new TextDecoder();
   let buffer = "";
   let result = null;
+  let question = null;
 
   try {
     while (true) {
@@ -796,6 +813,10 @@ export async function streamRun(
         onEvent?.(payload);
         if (payload.event === "result") {
           result = payload;
+        }
+        if (payload.event === "question") {
+          // The run parked on an operator question; the caller answers it and resumes the stream.
+          question = payload;
         }
         if (payload.event === "error") {
           // #region agent log
@@ -844,6 +865,11 @@ export async function streamRun(
     throw apiErr;
   }
 
+  if (!result && question) {
+    // Parked, not failed: the caller shows the questions, then calls answerRun to continue.
+    return { paused: true, question };
+  }
+
   if (!result) {
     // #region agent log
     fetch("http://127.0.0.1:7706/ingest/ac544aa8-f980-4348-bd8e-331cdfbc33b6", {
@@ -869,6 +895,100 @@ export async function streamRun(
       path,
     });
     emitApiError(apiErr);
+    logContext.duration_s = (performance.now() - streamStartedAt) / 1000;
+    await reportStreamFailure(apiErr, path, logContext);
+    throw apiErr;
+  }
+  return result;
+}
+
+/**
+ * Answer a question a run asked and stream the rest of it (POST).
+ * @returns {Promise<object|{paused: true, question: object}>} same shape as streamRun.
+ */
+export async function answerRun({ runId, answers }, onEvent, signal) {
+  const path = `/api/runs/${encodeURIComponent(runId)}/answer`;
+  const logContext = { prompt: "", mode: "answer", language: "", steps: [] };
+  const streamStartedAt = performance.now();
+  let response;
+  try {
+    response = await apiFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      body: JSON.stringify({ run_id: runId, answers: answers || {} }),
+      signal,
+    });
+  } catch (err) {
+    throw toApiError(err, path);
+  }
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    let message = text;
+    try {
+      message = JSON.parse(text)?.error || text;
+    } catch {
+      /* keep text */
+    }
+    throw new ApiError({
+      kind: "stream",
+      status: response.status,
+      title: httpTitle(response.status),
+      message: message || `API error ${response.status}`,
+      detail: `HTTP ${response.status}`,
+      path,
+    });
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result = null;
+  let question = null;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+      for (const chunk of parts) {
+        const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        const payload = JSON.parse(line.slice(6));
+        trackStreamEvent(logContext, payload);
+        onEvent?.(payload);
+        if (payload.event === "result") result = payload;
+        if (payload.event === "question") question = payload;
+        if (payload.event === "error") {
+          const body = payload.error || payload.message || "Run failed";
+          const apiErr = new ApiError({
+            kind: isStreamRejection(payload) ? "rejection" : "stream",
+            title: isStreamRejection(payload) ? "Your request is rejected" : "Run stream failed",
+            message: body,
+            reasons: isStreamRejection(payload) ? body : "",
+            path,
+          });
+          apiErr.skipLogReport = true;
+          emitApiError(apiErr);
+          throw apiErr;
+        }
+      }
+    }
+  } catch (err) {
+    if (err?.name === "AbortError") throw err;
+    throw err instanceof ApiError ? err : toApiError(err, path);
+  }
+
+  if (!result && question) return { paused: true, question };
+  if (!result) {
+    const apiErr = new ApiError({
+      kind: "stream",
+      title: "Run stream failed",
+      message: "Stream ended without a result",
+      path,
+    });
+    emitApiError(apiErr);
+    apiErr.skipLogReport = true;
     logContext.duration_s = (performance.now() - streamStartedAt) / 1000;
     await reportStreamFailure(apiErr, path, logContext);
     throw apiErr;

@@ -85,6 +85,7 @@ const PATH_RESOURCE = [
   [/\/api\/rules\//, "rules"],
   [/\/api\/skills\//, "skills"],
   [/\/api\/references\//, "references"],
+  [/\/api\/rag\//, "rag"],
   [/\/api\/results\//, "results"],
   [/\/api\/logs\//, "logs"],
   [/\/api\/docs\//, "docs"],

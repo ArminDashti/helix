@@ -385,16 +385,31 @@ export default function CanvasPage() {
             <label htmlFor="el_bg" className="block text-sm font-medium text-ink">
               {t("canvas.backgroundColor")}
             </label>
-            <input
-              id="el_bg"
-              type="text"
-              value={activeEl.backgroundColor || "transparent"}
-              onChange={(e) =>
-                updateElementField("backgroundColor", e.target.value)
-              }
-              className={inputClass}
-              spellCheck={false}
-            />
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                id="el_bg"
+                type="color"
+                aria-label={t("canvas.backgroundColor")}
+                value={
+                  /^#[0-9a-fA-F]{6}$/.test(activeEl.backgroundColor || "")
+                    ? activeEl.backgroundColor
+                    : "#ffffff"
+                }
+                onChange={(e) =>
+                  updateElementField("backgroundColor", e.target.value)
+                }
+                className="h-10 w-12 shrink-0 cursor-pointer rounded-xl border border-line bg-fog/40"
+              />
+              <input
+                type="text"
+                value={activeEl.backgroundColor || "transparent"}
+                onChange={(e) =>
+                  updateElementField("backgroundColor", e.target.value)
+                }
+                className="h-10 w-full min-w-0 rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
+                spellCheck={false}
+              />
+            </div>
           </div>
 
           <div>
@@ -464,6 +479,28 @@ export default function CanvasPage() {
               <option value="landscape">{t("canvas.landscape")}</option>
               <option value="portrait">{t("canvas.portrait")}</option>
             </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="pdf_page_bg"
+              className="block text-sm font-medium text-ink"
+            >
+              {t("canvas.pageBackground")}
+            </label>
+            <input
+              id="pdf_page_bg"
+              type="color"
+              value={
+                /^#[0-9a-fA-F]{6}$/.test(design.pageBackgroundColor || "")
+                  ? design.pageBackgroundColor
+                  : "#ffffff"
+              }
+              onChange={(e) =>
+                updateTopLevel("pageBackgroundColor", e.target.value)
+              }
+              className="mt-1 h-10 w-full cursor-pointer rounded-xl border border-line bg-fog/40"
+            />
           </div>
 
           <div>

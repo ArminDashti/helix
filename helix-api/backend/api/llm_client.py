@@ -18,10 +18,12 @@ from .config_loader import (
     PROVIDER_CURSOR_HEADLESS_CLI,
     get_agent_model,
     get_llm_base_url,
+    get_llm_headers,
     get_llm_timeout_seconds,
     get_openrouter_settings,
     get_openrouter_token,
     get_provider,
+    new_llm_session_id,
 )
 
 _OPENROUTER_AUTO_MODEL = DEFAULT_LLM_MODEL
@@ -186,7 +188,13 @@ def require_llm() -> tuple[str, str, str]:
     return provider, token, base_url
 
 
-def complete_chat(agent_id: str, user_message: str, system_prompt: str) -> str:
+def complete_chat(
+    agent_id: str,
+    user_message: str,
+    system_prompt: str,
+    *,
+    session_id: str | None = None,
+) -> str:
     provider, token, base_url = require_llm()
     if provider == PROVIDER_CURSOR_HEADLESS_CLI:
         message = _cursor_cli_message(
@@ -206,6 +214,7 @@ def complete_chat(agent_id: str, user_message: str, system_prompt: str) -> str:
             token=token,
             base_url=base_url,
             provider=provider,
+            session_id=session_id,
         )
     text = message.get("content") if isinstance(message, dict) else ""
     if isinstance(text, list):
@@ -221,10 +230,14 @@ def complete_chat_messages(
     messages: list[dict[str, Any]],
     *,
     tools: list[dict[str, Any]] | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Multi-turn OpenAI-compatible chat; returns the assistant message dict.
 
     Message may include ``content`` and/or ``tool_calls`` (Cursor-style tool loop).
+    ``session_id`` is the caller's conversation: vendors that route on one (OpenCode Go's
+    ``x-opencode-session``) key prompt caching and routing off it, so all turns of one pipeline
+    run should pass the same value.
     """
     provider, token, base_url = require_llm()
     if not isinstance(messages, list) or not messages:
@@ -238,6 +251,7 @@ def complete_chat_messages(
         base_url=base_url,
         provider=provider,
         tools=tools,
+        session_id=session_id,
     )
 
 
@@ -313,6 +327,9 @@ def complete_test_chat(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        # A test is its own conversation: its own session id keeps it out of the pipeline's
+        # routing/caching bucket.
+        **get_llm_headers(provider, new_llm_session_id()),
     }
     if provider == "openrouter":
         app_name = str(settings.get("app_name") or "Helix")
@@ -511,6 +528,7 @@ def _chat_completions_request(
     base_url: str,
     provider: str,
     tools: list[dict[str, Any]] | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     url = f"{base_url}/chat/completions"
     settings = get_openrouter_settings()
@@ -539,6 +557,7 @@ def _chat_completions_request(
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
+        **get_llm_headers(provider, session_id),
     }
     if provider == "openrouter":
         app_name = str(settings.get("app_name") or "Helix")

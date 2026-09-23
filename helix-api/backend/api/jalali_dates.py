@@ -1,4 +1,4 @@
-"""Jalali (Iranian) calendar helpers for warehouse SQL prompts."""
+"""Jalali (Iranian) calendar helpers for SQL prompts."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def calendar_hint_for_prompt(prompt: str) -> str:
     if year is None:
         return ""
     lines = [
-        "Warehouse calendar (required for this prompt):",
+        "Calendar (required for this prompt):",
         f"- Sales.DarkhastFaktor.Sal is the Jalali year. Filter Sal = {year}.",
         "- Sales.DarkhastFaktor.TarikhFaktor is Gregorian datetime. "
         f"Never YEAR(TarikhFaktor) = {year} and never date literals like "

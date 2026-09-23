@@ -9,8 +9,9 @@ from typing import Any, Iterator
 
 from . import logs_store
 from . import markdown_store as store
+from . import token_usage
 from .chart_payload import build_echarts_option, build_grid
-from .config_loader import get_provider
+from .config_loader import get_provider, provider_label, web_search_enabled
 from .demo import VALID_CHART_TYPES, _normalize_report_type
 from .jalali_dates import calendar_hint_for_prompt
 from .llm_client import complete_chat_messages, require_llm
@@ -33,7 +34,7 @@ ORCHESTER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "execute_select",
             "description": (
-                "Run one cheap SELECT (or CTE+SELECT) against the allowlisted warehouse. "
+                "Run one cheap SELECT (or CTE+SELECT) against the allowlisted database. "
                 "Always include TOP/FETCH. Prefer catalog.schema.table names from the prompt."
             ),
             "parameters": {
@@ -53,7 +54,7 @@ ORCHESTER_TOOLS: list[dict[str, Any]] = [
         "function": {
             "name": "search_web",
             "description": (
-                "Search the public web for facts outside the warehouse "
+                "Search the public web for facts outside the connected database "
                 "(benchmarks, news, industry rates). Pass 1–3 short queries."
             ),
             "parameters": {
@@ -102,6 +103,50 @@ ORCHESTER_TOOLS: list[dict[str, Any]] = [
         },
     },
 ]
+
+def active_tools(names: tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+    """Tools the model may call right now.
+
+    `search_web` disappears while web-searcher is disabled: a disabled capability must not stay
+    callable, so declaration and dispatch are filtered from the same source.
+    """
+    blocked = set() if web_search_enabled() else {"search_web"}
+    out: list[dict[str, Any]] = []
+    for tool in ORCHESTER_TOOLS:
+        fn = tool.get("function") if isinstance(tool, dict) else None
+        tool_name = str((fn or {}).get("name") or "")
+        if tool_name in blocked:
+            continue
+        if names is not None and tool_name not in names:
+            continue
+        out.append(tool)
+    return out
+
+
+# Ask the operator mid-run. The pipeline pauses on this call, the UI collects the answer, and
+# the researcher's own turn resumes with the answer in ctx['clarifications'].
+ASK_OPERATOR_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "ask_operator",
+        "description": (
+            "Ask the operator one question when the request cannot be resolved from the live "
+            "catalog — an ambiguous period, a missing grouping, or two equally plausible tables. "
+            "The run pauses until they answer. Do not use it for anything you can decide yourself, "
+            "and never for SQL, credentials, or permission."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "One short question for the operator",
+                },
+            },
+            "required": ["question"],
+        },
+    },
+}
 
 
 def _append_step_log(
@@ -166,6 +211,14 @@ def _step_event(
     if fetch and fetch.get("sql"):
         payload["sql"] = str(fetch.get("sql"))[:2000]
         payload["row_count"] = len(fetch.get("rows") or [])
+    # Live token meter: every step carries the run's running total so the UI can show what the run
+    # has cost so far, not only what it cost when it finished.
+    usage = token_usage.snapshot(ctx)
+    if usage.get("calls"):
+        payload["token_usage"] = usage
+    rag = ctx.get("rag")
+    if isinstance(rag, dict) and rag.get("docs"):
+        payload["rag"] = rag
     return payload
 
 
@@ -209,6 +262,81 @@ def _result_language(ctx: dict[str, Any]) -> str:
 
 def _sse(data: dict[str, Any]) -> str:
     return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _question_event(ctx: dict[str, Any], pending: dict[str, Any]) -> dict[str, Any]:
+    """SSE payload asking the operator to answer; the run waits for the answer request."""
+    questions: list[dict[str, str]] = []
+    for index, item in enumerate(pending.get("questions") or [], start=1):
+        if isinstance(item, dict):
+            text = str(item.get("text") or "").strip()
+            question_id = str(item.get("id") or f"q{index}")
+        else:
+            text = str(item or "").strip()
+            question_id = f"q{index}"
+        if text:
+            questions.append({"id": question_id, "text": text})
+    return {
+        "event": "question",
+        "run_id": str(ctx.get("run_id") or ""),
+        "agent_id": str(pending.get("agent_id") or ""),
+        "node_id": str(pending.get("node") or ""),
+        "questions": questions,
+        "at": _agent_time.time(),
+    }
+
+
+def _operator_answers_text(ctx: dict[str, Any]) -> str:
+    """Operator answers so far, formatted for a prompt ('' when there are none)."""
+    answers = ctx.get("clarifications")
+    if not isinstance(answers, list) or not answers:
+        return ""
+    lines = [
+        "Operator answers (already given — use them and do not ask these again):"
+    ]
+    for item in answers:
+        if not isinstance(item, dict):
+            continue
+        question = str(item.get("question") or "").strip()
+        answer = str(item.get("answer") or "").strip()
+        if question:
+            lines.append(f"- Q: {question}\n  A: {answer or '(no answer)'}")
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _apply_answers(
+    ctx: dict[str, Any],
+    questions: list[dict[str, Any]],
+    answers: dict[str, Any],
+) -> None:
+    """Record the operator's answers in ctx, where every later prompt picks them up."""
+    store = ctx.setdefault("clarifications", [])
+    if not isinstance(store, list):
+        ctx["clarifications"] = store = []
+    for index, item in enumerate(questions or [], start=1):
+        question_id = (
+            str(item.get("id") or f"q{index}") if isinstance(item, dict) else f"q{index}"
+        )
+        text = str(item.get("text") if isinstance(item, dict) else item or "").strip()
+        answer = str((answers or {}).get(question_id) or "").strip()
+        if not answer:
+            continue
+        store.append({"question": text, "answer": answer})
+
+
+def _park_pending(ctx: dict[str, Any]) -> str:
+    """Hand a run that asked a question to the run store; returns the run id."""
+    from . import run_store
+
+    pending = ctx.get("_pending_question")
+    if not isinstance(pending, dict):
+        pending = {}
+    return run_store.pause_run(
+        ctx,
+        agent_id=str(pending.get("agent_id") or ""),
+        node=str(pending.get("node") or ""),
+        questions=list(pending.get("questions") or []),
+    )
 
 
 def _sql_from_ctx(ctx: dict[str, Any]) -> str:
@@ -322,7 +450,7 @@ def _guardian_hard_block(prompt: str, actor: dict[str, Any]) -> str | None:
     if any(snippet in lowered for snippet in _DANGEROUS_SNIPPETS):
         return "This prompt is not allowed."
     if actor.get("unknown"):
-        return "Unknown user; warehouse analysis is blocked."
+        return "Unknown user; data analysis is blocked."
     admin_only = (
         "change password",
         "create user",
@@ -457,6 +585,8 @@ def _package_result(ctx: dict[str, Any]) -> dict[str, Any]:
         "echarts_options": echarts_options or None,
         "grid": grid,
         "used_demo": False,
+        "token_usage": token_usage.snapshot(ctx),
+        "rag": ctx.get("rag") if isinstance(ctx.get("rag"), dict) else None,
     }
 
 
@@ -468,8 +598,12 @@ def _tool_contract_suffix(ctx: dict[str, Any]) -> str:
         "## Tools",
         "",
         "You are the sole Helix agent. Use tools until the ask is done:",
-        "- execute_select — warehouse SELECT; always TOP/FETCH; names from live catalog.",
-        "- search_web — public facts only when the warehouse cannot answer.",
+        "- execute_select — read-only SELECT; always TOP/FETCH; names from live catalog.",
+        *(
+            ["- search_web — public facts only when the database cannot answer."]
+            if web_search_enabled()
+            else []
+        ),
         "- submit_result — finish with text_report grounded in sql_fetch preview numbers.",
         "Do not invent figures. Call submit_result exactly once when finished.",
         _report_length_hint(report_level, language),
@@ -511,6 +645,9 @@ def _build_user_message(ctx: dict[str, Any]) -> str:
     calendar_hint = calendar_hint_for_prompt(str(ctx.get("prompt") or ""))
     if calendar_hint:
         parts.append(calendar_hint)
+    answers = _operator_answers_text(ctx)
+    if answers:
+        parts.append(answers)
     return "\n\n".join(parts)
 
 
@@ -564,6 +701,8 @@ def _dispatch_tool(
         )
 
     if name == "search_web":
+        if not web_search_enabled():
+            return json.dumps({"ok": False, "error": "web search is disabled"}), False
         queries = _normalize_web_search_queries(args.get("queries"))
         if not queries:
             return json.dumps({"ok": False, "error": "queries required (1–3)"}), False
@@ -653,11 +792,19 @@ def _assistant_message_for_history(message: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _orchester_events(ctx: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    """Yield step events from the LangGraph four-agent pipeline."""
+def _orchester_events(
+    ctx: dict[str, Any],
+    *,
+    entry: str | None = None,
+) -> Iterator[dict[str, Any]]:
+    """Yield step events from the LangGraph four-agent pipeline.
+
+    ``entry`` re-enters the graph at a node instead of at orchester — that is how a run parked on
+    an operator question continues where it stopped.
+    """
     from .pipeline_langgraph import langgraph_events
 
-    yield from langgraph_events(ctx)
+    yield from langgraph_events(ctx, entry=entry)
     return
 
     # Legacy single-agent tool loop kept below for reference / emergency rollback.
@@ -696,7 +843,10 @@ def _orchester_events(ctx: dict[str, Any]) -> Iterator[dict[str, Any]]:
         )
         try:
             assistant = complete_chat_messages(
-                "orchester", messages, tools=ORCHESTER_TOOLS
+                "orchester",
+                messages,
+                tools=active_tools(),
+                session_id=str(ctx.get("run_id") or ""),
             )
         except Exception as exc:  # noqa: BLE001
             err = _sql_error_message(exc)
@@ -892,13 +1042,14 @@ def pipeline_events(
     )
 
     provider = get_provider()
+    provider_name = provider_label(provider)
     _ = get_pipeline_graph_for_mode(mode)
 
     effective_prompt = str(ctx.get("prompt") or prompt)
     user_message = _ui_text(
         language,
-        f"Received prompt ({mode}/{language}) via {provider}: {effective_prompt[:120]}",
-        f"درخواست دریافت شد ({mode}/{language}) از {provider}: {effective_prompt[:120]}",
+        f"Received prompt ({mode}/{language}) via {provider_name}: {effective_prompt[:120]}",
+        f"درخواست دریافت شد ({mode}/{language}) از {provider_name}: {effective_prompt[:120]}",
     )
     yield _sse(
         _step_event(
@@ -910,10 +1061,7 @@ def pipeline_events(
     )
 
     pipeline_started = _agent_time.time()
-
-    def result_chunk(payload: dict[str, Any]) -> str:
-        duration_s = round(_agent_time.time() - pipeline_started, 2)
-        return _sse({"event": "result", **payload, "duration_s": duration_s})
+    ctx.setdefault("pipeline_started", pipeline_started)
 
     display = agent_display_name("orchester")
     yield _sse(
@@ -944,6 +1092,35 @@ def pipeline_events(
         yield _error_event(err_text, ctx=ctx, agent_id="orchester")
         return
 
+    if ctx.get("_pending_question"):
+        # The run asked the operator something. The question event already went out and the run
+        # is parked; the answer request continues it from the node that asked.
+        return
+
+    yield from _pipeline_tail(ctx)
+
+
+def result_chunk(payload: dict[str, Any], ctx: dict[str, Any]) -> str:
+    """The run's final payload, stamped with how long the run took.
+
+    The start time lives in ctx rather than in a closure so a resumed run still reports the
+    duration from when it started, pause included.
+    """
+    started = ctx.get("pipeline_started")
+    duration_s = (
+        round(_agent_time.time() - float(started), 2)
+        if isinstance(started, (int, float))
+        else 0.0
+    )
+    payload = {**payload, "duration_s": duration_s, "token_usage": token_usage.snapshot(ctx)}
+    rag = ctx.get("rag")
+    if isinstance(rag, dict):
+        payload["rag"] = rag
+    return _sse({"event": "result", **payload})
+
+
+def _pipeline_tail(ctx: dict[str, Any]) -> Iterator[str]:
+    """Finish a run: report the outcome, then the packaged result or the failure."""
     outcome = ctx.get("_orchester_outcome")
     if isinstance(outcome, tuple) and len(outcome) == 2:
         status, message = str(outcome[0]), str(outcome[1])
@@ -967,14 +1144,67 @@ def pipeline_events(
         return
 
     if ctx.get("final_payload"):
-        yield result_chunk(ctx["final_payload"])
+        yield result_chunk(ctx["final_payload"], ctx)
         return
     try:
         result = _package_result(ctx)
     except Exception as exc:
         yield _error_event(_sql_error_message(exc), ctx=ctx)
         return
-    yield result_chunk(result)
+    yield result_chunk(result, ctx)
+
+
+def resume_pipeline_events(run_id: str, answers: dict[str, Any]) -> Iterator[str]:
+    """Continue a run that parked on an operator question.
+
+    The answer is folded into ctx, so the resuming node (and every later prompt) sees it; the run
+    then continues from the node that asked rather than replaying the agents that already ran.
+    """
+    from . import run_store
+
+    paused = run_store.pop_paused(run_id)
+    if paused is None:
+        yield _sse(
+            {
+                "event": "error",
+                "error": (
+                    "This question expired — the run was dropped by the server. "
+                    "Start the analysis again."
+                ),
+                "kind": "pause_expired",
+                "run_id": str(run_id or ""),
+            }
+        )
+        return
+
+    ctx = paused["ctx"]
+    _apply_answers(ctx, list(paused.get("questions") or []), answers or {})
+    ctx.pop("_pending_question", None)
+    entry = str(paused.get("node") or "")
+
+    try:
+        for step in _orchester_events(ctx, entry=entry):
+            yield _sse(step)
+    except Exception as exc:
+        err_text = _sql_error_message(exc)
+        ctx["last_error"] = err_text
+        yield _sse(
+            _step_event(
+                ctx,
+                agent_id=entry or "orchester",
+                node_id=entry or "orchester",
+                status="failed",
+                message=err_text,
+            )
+        )
+        yield _error_event(err_text, ctx=ctx, agent_id=entry or "orchester")
+        return
+
+    if ctx.get("_pending_question"):
+        # It needs something else answered: it was parked again by the pipeline and the UI asks.
+        return
+
+    yield from _pipeline_tail(ctx)
 
 
 def run_pipeline_sync(
@@ -990,6 +1220,7 @@ def run_pipeline_sync(
 ) -> dict[str, Any]:
     result: dict[str, Any] | None = None
     error: str | None = None
+    question: str = ""
     for chunk in pipeline_events(
         prompt,
         mode,
@@ -1008,8 +1239,18 @@ def run_pipeline_sync(
             result = {k: v for k, v in payload.items() if k != "event"}
         if payload.get("event") == "error":
             error = str(payload.get("error") or "Run failed")
+        if payload.get("event") == "question":
+            first = (payload.get("questions") or [{}])[0]
+            question = str(first.get("text") or "") if isinstance(first, dict) else ""
     if error:
         raise ValueError(error)
+    if not result and question:
+        # Only the streaming endpoint can answer a paused run, so a synchronous caller is told to
+        # use it rather than being handed a question it has no way to reply to.
+        raise ValueError(
+            f"This run is waiting for an answer: {question} — continue it from /api/runs/stream "
+            "and /api/runs/<run_id>/answer."
+        )
     if not result:
         missing = "Pipeline produced no result"
         _persist_failure(

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { X, ChevronDown, ChevronUp, Clock, Layers, Database, AlertTriangle, CheckCircle2, Loader2, Copy } from "lucide-react";
+import { X, ChevronDown, ChevronUp, Clock, Layers, Database, AlertTriangle, CheckCircle2, Loader2, Copy, Send } from "lucide-react";
 import IconButton from "./IconButton.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { translateKnownMessage } from "../i18n/apiErrors.js";
@@ -37,12 +37,15 @@ export default function RunProgressModal({
   nameById = {},
   meta = {},
   startedAt = null,
+  question = null,
+  onSubmitAnswers,
 }) {
   const listRef = useRef(null);
   const { t } = useI18n();
   const [expanded, setExpanded] = useState({});
   const [showRaw, setShowRaw] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [answers, setAnswers] = useState({});
 
   const list = Array.isArray(messages) ? messages : [];
   const runningStep = [...list].reverse().find((m) => m?.status === "running");
@@ -64,6 +67,11 @@ export default function RunProgressModal({
     if (!open || !listRef.current) return;
     listRef.current.scrollTop = listRef.current.scrollHeight;
   }, [open, messages]);
+
+  useEffect(() => {
+    // A fresh question gets a clean form.
+    setAnswers({});
+  }, [question]);
 
   if (!open) return null;
 
@@ -177,7 +185,50 @@ export default function RunProgressModal({
         </ul>
 
         <footer className="flex shrink-0 flex-col gap-2 border-t border-line/80 px-4 py-3 bg-paper">
-          {running ? (
+          {question?.questions?.length ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                onSubmitAnswers?.(answers);
+              }}
+              className="space-y-2 rounded-xl border border-moss/40 bg-moss/5 p-3"
+            >
+              <p className="text-sm font-medium text-ink">
+                {t("runProgress.questionTitle", {
+                  name: agentLabel(question.agent_id, nameById, t),
+                })}
+              </p>
+              {question.questions.map((item) => (
+                <div key={item.id}>
+                  <label htmlFor={`answer-${item.id}`} className="block text-sm text-ink/90">
+                    {item.text}
+                  </label>
+                  <textarea
+                    id={`answer-${item.id}`}
+                    rows={2}
+                    value={answers[item.id] || ""}
+                    onChange={(event) =>
+                      setAnswers((prev) => ({ ...prev, [item.id]: event.target.value }))
+                    }
+                    className="mt-1 w-full resize-y rounded-lg border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-moss focus:ring-2 focus:ring-moss/30"
+                    placeholder={t("runProgress.questionPlaceholder")}
+                  />
+                </div>
+              ))}
+              <div className="flex justify-end">
+                <IconButton
+                  type="submit"
+                  icon={Send}
+                  className="rounded-xl border border-moss bg-moss px-4 py-2 text-sm font-medium text-paper hover:opacity-90"
+                >
+                  {t("runProgress.questionSubmit")}
+                </IconButton>
+              </div>
+            </form>
+          ) : null}
+          {question?.questions?.length ? (
+            <p className="text-xs text-muted">{t("runProgress.questionWaiting")}</p>
+          ) : running ? (
             <p className="text-xs font-medium text-moss animate-pulse">{workingLabel} · {list.length} steps</p>
           ) : error ? (
             typeof error === "object" && error.kind === "rejection" ? (

@@ -183,7 +183,7 @@ def validate_select(
     }
     if not actor_is_admin and actor_allowed_tables is not None:
         if not user_tables:
-            raise ValueError("User has no allowed warehouse tables")
+            raise ValueError("User has no allowed tables")
         for _schema, table in from_tokens:
             if table.lower() not in user_tables:
                 raise ValueError(f"Table {table} is not allowed for this user")
@@ -212,7 +212,7 @@ def validate_select(
 
 
 def _ensure_sqlserver_top(statement: str, max_rows: int) -> str:
-    """Cap a SQL Server SELECT so the warehouse does not stream an unbounded result."""
+    """Cap a SQL Server SELECT so the database does not stream an unbounded result."""
     if _LIMIT.search(statement):
         return statement
     return re.sub(
@@ -264,7 +264,7 @@ def _sql_error_message(exc: BaseException) -> str:
     if _is_communication_link_failure(exc):
         return (
             "SQL Server closed the connection while running the query. "
-            "A SELECT without TOP can return too many rows, or the warehouse "
+            "A SELECT without TOP can return too many rows, or the database "
             "dropped a long query. Retry with a narrower SELECT (add TOP / WHERE)."
         )
     return _exception_text(exc)

@@ -15,6 +15,7 @@ from . import markdown_store as store
 from . import db_sql
 from . import docs_catalog
 from . import logs_store
+from . import mcp_config
 from . import results_store
 from .config_loader import (
     create_custom_agent,
@@ -53,7 +54,7 @@ from .pipeline_graph import (
 )
 from .llm_client import is_usable_workspace, require_llm
 from . import org
-from .pipeline_run import pipeline_events, run_pipeline_sync
+from .pipeline_run import pipeline_events, resume_pipeline_events, run_pipeline_sync
 
 
 def _json_body(request: HttpRequest) -> dict[str, Any]:
@@ -277,6 +278,70 @@ def reference_detail(request: HttpRequest, name: str) -> HttpResponse:
         return _error(str(exc))
     except FileNotFoundError:
         return _error("Reference not found", 404)
+
+
+# --- RAG knowledge base ---
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def rag_collection(request: HttpRequest) -> JsonResponse:
+    if request.method == "GET":
+        from .rag_context import MAX_CONTEXT_TOKENS
+
+        return JsonResponse(
+            {
+                "docs": store.list_rag_docs(),
+                "totals": {**store.rag_totals(), "budget_tokens": MAX_CONTEXT_TOKENS},
+            }
+        )
+    try:
+        body = _json_body(request)
+    except ValueError as exc:
+        return _error(str(exc))
+    doc_id = body.get("id") or body.get("name") or ""
+    if not doc_id:
+        return _error("id is required")
+    content = body.get("content", "")
+    title = body.get("title")
+    try:
+        item = store.create_rag_doc(
+            str(doc_id),
+            content if isinstance(content, str) else "",
+            title=str(title) if title else None,
+        )
+    except ValueError as exc:
+        return _error(str(exc))
+    except FileExistsError:
+        return _error("RAG document already exists", 409)
+    return JsonResponse(item, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PUT", "DELETE"])
+def rag_detail(request: HttpRequest, doc_id: str) -> HttpResponse:
+    try:
+        if request.method == "GET":
+            return JsonResponse(store.get_rag_doc(doc_id))
+        if request.method == "DELETE":
+            store.delete_rag_doc(doc_id)
+            return HttpResponse(status=204)
+        body = _json_body(request)
+        content = body.get("content", "")
+        if not isinstance(content, str):
+            return _error("content must be a string")
+        title = body.get("title")
+        return JsonResponse(
+            store.update_rag_doc(
+                doc_id,
+                content,
+                title=title if isinstance(title, str) and title.strip() else None,
+            )
+        )
+    except ValueError as exc:
+        return _error(str(exc))
+    except FileNotFoundError:
+        return _error("RAG document not found", 404)
 
 
 # --- Rules ---
@@ -737,6 +802,59 @@ def docs_table_detail(request: HttpRequest, table: str) -> JsonResponse:
 
 
 @csrf_exempt
+@require_http_methods(["GET"])
+def mcp_collection(request: HttpRequest) -> JsonResponse:
+    """List MCP servers from Cursor's mcp.json (env/header values stripped)."""
+    try:
+        return JsonResponse(mcp_config.list_servers())
+    except ValueError as exc:
+        return _error(str(exc))
+    except FileNotFoundError as exc:
+        return _error(str(exc), 404)
+    except OSError as exc:
+        return _error(str(exc), 500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def mcp_toggle(request: HttpRequest) -> JsonResponse:
+    """Enable/disable one MCP server in mcp.json."""
+    try:
+        body = _json_body(request)
+    except Exception:  # noqa: BLE001 — malformed JSON body
+        return _error("invalid JSON body")
+    name = body.get("name")
+    enabled = body.get("enabled")
+    if not isinstance(name, str) or not name.strip():
+        return _error("name must be a non-empty string")
+    if not isinstance(enabled, bool):
+        return _error("enabled must be a boolean")
+    try:
+        return JsonResponse(mcp_config.set_enabled(name.strip(), enabled))
+    except ValueError as exc:
+        return _error(str(exc))
+    except FileNotFoundError as exc:
+        return _error(str(exc), 404)
+    except OSError as exc:
+        return _error(str(exc), 500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def mcp_sqlserver(request: HttpRequest) -> JsonResponse:
+    """Define/refresh the SQL Server MCP in mcp.json from Settings → Database."""
+    try:
+        mcp_config.ensure_sql_server()
+    except ValueError as exc:
+        return _error(str(exc))
+    except FileNotFoundError as exc:
+        return _error(str(exc), 404)
+    except OSError as exc:
+        return _error(str(exc), 500)
+    return JsonResponse(mcp_config.list_servers())
+
+
+@csrf_exempt
 @require_http_methods(["GET", "POST"])
 def results_collection(request: HttpRequest) -> JsonResponse:
     if request.method == "GET":
@@ -759,6 +877,8 @@ def results_collection(request: HttpRequest) -> JsonResponse:
         language=language,
         payload=payload,
         duration_s=body.get("duration_s"),
+        token_usage=body.get("token_usage"),
+        rag=body.get("rag"),
     )
     return JsonResponse(item, status=201)
 
@@ -1149,6 +1269,59 @@ def runs_stream(request: HttpRequest) -> HttpResponse:
         _stream_with_disconnect_logging(),
         content_type="text/event-stream",
     )
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def runs_answer(request: HttpRequest, run_id: str = "") -> HttpResponse:
+    """Answer a question a run asked; streams the rest of the run.
+
+    The run id is the one from the URL (``/api/runs/<run_id>/answer``); a ``run_id`` in the body
+    is accepted as a fallback. Body: ``{"answers": {"q1": "..."}}``.
+    """
+    try:
+        body = _json_body(request)
+    except ValueError as exc:
+        return _error(str(exc))
+
+    run_id = str(run_id or body.get("run_id") or "").strip()
+    if not run_id:
+        return _error("run_id is required", 400)
+    answers = body.get("answers")
+    if not isinstance(answers, dict):
+        answers = {}
+
+    try:
+        require_llm()
+    except ValueError as exc:
+        return _error(str(exc), 400)
+
+    def _answer_stream() -> Iterator[str]:
+        try:
+            for chunk in resume_pipeline_events(run_id, answers):
+                yield chunk
+        except GeneratorExit:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            _record_log_error(
+                kind="api",
+                message=str(exc),
+                prompt="",
+                mode="",
+                language="",
+                path=f"/api/runs/{run_id}/answer",
+                status_code=500,
+            )
+            yield (
+                "data: "
+                + json.dumps({"event": "error", "error": str(exc), "kind": "stream"})
+                + "\n\n"
+            )
+
+    response = StreamingHttpResponse(_answer_stream(), content_type="text/event-stream")
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response

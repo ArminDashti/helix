@@ -66,6 +66,7 @@ def collect_resource_versions() -> dict[str, str]:
     resources["rules"] = _dir_sig([md_root / "rules"], "*.md")
     resources["skills"] = _dir_sig([md_root / "skills"], "**/*.md")
     resources["references"] = _dir_sig([md_root / "references"], "*.md")
+    resources["rag"] = _dir_sig([md_root / "rag"], "*.md")
     resources["instructions"] = _dir_sig([md_root / "instructions"], "*.md")
     resources["assignments"] = _stat_sig(md_root / "rule-assignments.json") + "|" + _stat_sig(md_root / "skill-assignments.json")
     resources["config"] = _stat_sig(cfg_path)

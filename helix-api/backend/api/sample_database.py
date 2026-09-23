@@ -266,7 +266,7 @@ def ensure_sqlite_file(path: Path | None = None) -> Path:
 
 
 def ensure_configured_sample_if_needed() -> Path | None:
-    """If the user did not provide a warehouse, persist sqlite sample and seed it."""
+    """If the user did not provide a database, persist sqlite sample and seed it."""
     from .config_loader import (
         DEFAULT_DATABASE,
         get_database_engine,

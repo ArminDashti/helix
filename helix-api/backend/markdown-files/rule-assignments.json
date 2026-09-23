@@ -1,20 +1,17 @@
 {
+  "orchester": [
+    "orchester"
+  ],
   "guard-prompt": [
-    "orchester"
+    "guardian"
   ],
-  "warehouse-sql": [
-    "orchester"
+  "database-sql": [
+    "researcher"
   ],
-  "approve-result": [
-    "orchester"
+  "build-result": [
+    "final-approver"
   ],
   "web-search-only": [
-    "orchester"
-  ],
-  "core-behavior": [
-    "orchester"
-  ],
-  "output-contract": [
-    "orchester"
+    "web-searcher"
   ]
 }
