@@ -687,8 +687,9 @@ function trackStreamEvent(logContext, payload) {
   }
 }
 
-export async function fetchDbExplorerTables() {
-  return requestJson("/api/db-explorer/tables/");
+export async function fetchDbExplorerTables(kind = "tables") {
+  const qs = `?kind=${encodeURIComponent(kind || "tables")}`;
+  return requestJson(`/api/db-explorer/tables/${qs}`);
 }
 
 export async function fetchDbExplorerColumns(table) {

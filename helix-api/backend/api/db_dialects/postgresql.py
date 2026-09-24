@@ -71,6 +71,37 @@ def list_tables() -> list[dict[str, Any]]:
     return result
 
 
+def list_objects(kind: str = "tables") -> list[dict[str, Any]]:
+    kind = (kind or "tables").strip().lower()
+    if kind in ("tables", "views"):
+        wanted = "table" if kind == "tables" else "view"
+        return [obj for obj in list_tables() if obj.get("kind") == wanted]
+    if kind in ("procedures", "functions"):
+        routine_type = "PROCEDURE" if kind == "procedures" else "FUNCTION"
+        sql = """
+            SELECT routine_schema, routine_name
+            FROM information_schema.routines
+            WHERE routine_type = %s
+              AND routine_schema NOT IN ('pg_catalog', 'information_schema')
+            ORDER BY routine_schema, routine_name
+        """
+        with connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (routine_type,))
+                rows = cur.fetchall()
+        singular = "procedure" if kind == "procedures" else "function"
+        return [
+            {
+                "schema": schema,
+                "name": name,
+                "full_name": f"{schema}.{name}",
+                "kind": singular,
+            }
+            for schema, name in rows
+        ]
+    raise ValueError("kind must be one of tables, views, procedures, functions")
+
+
 def list_columns(schema: str, table: str) -> list[dict[str, Any]]:
     sql = """
         SELECT

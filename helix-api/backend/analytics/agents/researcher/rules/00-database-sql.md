@@ -25,3 +25,6 @@ name: Database SQL
 14. Ask the operator one question when the ask is genuinely ambiguous (period, grouping, two plausible tables) instead of guessing wide.
 15. Emit `goals` and `what_was_done` before handoff and finish with JSON.
 16. Reach the database only through the MCP-backed tool (`execute_select` / the configured SQL Server MCP) — never any other connection or path.
+
+## Persian runs
+17. When the run is Persian (language=fa or a Persian ask), alias every user-facing output column to a Persian label (`SELECT … AS <Persian label>`) so Persian report tables carry Persian headers; the catalog identifiers in the query itself stay untranslated.

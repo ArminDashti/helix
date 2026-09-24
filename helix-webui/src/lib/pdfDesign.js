@@ -192,11 +192,3 @@ export function elementStyle(prefs, id) {
   const elements = prefs?.elements || defaultElements();
   return mergeElement(id, elements[id]);
 }
-
-export function orderedGridColumns(columns, language) {
-  const cols = Array.isArray(columns) ? [...columns] : [];
-  if (language === "fa" || language === "rtl") {
-    return cols.reverse();
-  }
-  return cols;
-}

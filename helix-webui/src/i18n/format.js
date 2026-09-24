@@ -26,3 +26,10 @@ export function formatDurationSeconds(seconds) {
   const rest = Math.round(value % 60);
   return `${minutes}m ${rest}s`;
 }
+
+/** Group digits with thousand separators, e.g. 1,234,567. */
+export function formatNumber(value, locale) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  return new Intl.NumberFormat(intlLocale(locale)).format(n);
+}

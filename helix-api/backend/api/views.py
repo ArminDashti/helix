@@ -1015,13 +1015,16 @@ def db_explorer_query(request: HttpRequest) -> JsonResponse:
 @csrf_exempt
 @require_http_methods(["GET"])
 def db_explorer_tables(request: HttpRequest) -> JsonResponse:
+    kind = (request.GET.get("kind") or "tables").strip().lower()
+    if kind not in db_sql.OBJECT_KINDS:
+        return _error(f"kind must be one of {', '.join(db_sql.OBJECT_KINDS)}")
     try:
-        tables = db_sql.list_tables()
+        tables = db_sql.list_objects(kind)
     except ValueError as exc:
         return _error(str(exc), 503)
     except Exception as exc:  # noqa: BLE001
         return _error(str(exc), 502)
-    return JsonResponse({"tables": tables})
+    return JsonResponse({"tables": tables, "kind": kind})
 
 
 @csrf_exempt

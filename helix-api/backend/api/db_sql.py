@@ -6,8 +6,10 @@ from typing import Any
 
 from .db_dialects import (
     ALLOWED_LIMITS,
+    OBJECT_KINDS,
     connect,
     list_columns,
+    list_objects,
     list_tables,
     parse_table_name_for_engine,
     select_rows,
@@ -23,8 +25,10 @@ def parse_table_name(raw: str) -> tuple[str, str]:
 
 __all__ = [
     "ALLOWED_LIMITS",
+    "OBJECT_KINDS",
     "connect",
     "list_columns",
+    "list_objects",
     "list_tables",
     "parse_table_name",
     "select_rows",

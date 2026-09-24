@@ -72,6 +72,17 @@ def list_tables() -> list[dict[str, Any]]:
     ]
 
 
+def list_objects(kind: str = "tables") -> list[dict[str, Any]]:
+    kind = (kind or "tables").strip().lower()
+    if kind in ("tables", "views"):
+        wanted = "table" if kind == "tables" else "view"
+        return [obj for obj in list_tables() if obj.get("kind") == wanted]
+    if kind in ("procedures", "functions"):
+        # SQLite has no stored procedures or functions in the catalog.
+        return []
+    raise ValueError("kind must be one of tables, views, procedures, functions")
+
+
 def list_columns(schema: str, table: str) -> list[dict[str, Any]]:
     del schema  # Sample/local SQLite tables live in the main catalog
     with connect() as conn:

@@ -27,6 +27,16 @@ def list_tables() -> list[dict[str, Any]]:
     return get_dialect().list_tables()
 
 
+OBJECT_KINDS = ("tables", "views", "procedures", "functions")
+
+
+def list_objects(kind: str = "tables") -> list[dict[str, Any]]:
+    normalized = (kind or "tables").strip().lower()
+    if normalized not in OBJECT_KINDS:
+        raise ValueError(f"kind must be one of {', '.join(OBJECT_KINDS)}")
+    return get_dialect().list_objects(normalized)
+
+
 def list_columns(schema: str, table: str) -> list[dict[str, Any]]:
     return get_dialect().list_columns(schema, table)
 
@@ -53,8 +63,10 @@ def parse_table_name_for_engine(raw: str) -> tuple[str, str]:
 
 __all__ = [
     "ALLOWED_LIMITS",
+    "OBJECT_KINDS",
     "connect",
     "list_columns",
+    "list_objects",
     "list_tables",
     "normalize_engine",
     "parse_table_name_for_engine",

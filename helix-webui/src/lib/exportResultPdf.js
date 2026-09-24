@@ -9,7 +9,6 @@ import {
   elementStyle,
   loadPdfDesign,
   normalizePdfDesign,
-  orderedGridColumns,
 } from "./pdfDesign.js";
 
 function escapeHtml(value) {
@@ -180,6 +179,7 @@ export function buildPdfHtml({
   companyLogoDataUrl = "",
   design = DEFAULT_PDF_DESIGN,
   footerSampleText = "",
+  includeFooter = true,
 }) {
   const prefs = normalizePdfDesign(design);
   const dir = resolveDir(language, textReport || prompt);
@@ -243,7 +243,8 @@ export function buildPdfHtml({
 
   let gridInline = "";
   if (gridEl.visible && grid?.columns?.length) {
-    const cols = orderedGridColumns(grid.columns, language === "fa" ? "fa" : dir);
+    // Grids stay LTR (original column order) regardless of report language.
+    const cols = Array.isArray(grid.columns) ? grid.columns : [];
     const rows = grid.rows || [];
     const thBorder =
       gridEl.borderWidthPx > 0
@@ -270,7 +271,7 @@ export function buildPdfHtml({
             .join("")}</tr>`,
       )
       .join("");
-    gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}"><table style="width:100%;border-collapse:collapse;font-family:${gridEl.fontFamily};font-size:${gridEl.fontSizePx}px;color:${gridEl.color};" dir="${dir}"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
+    gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}"><table style="width:100%;border-collapse:collapse;font-family:${gridEl.fontFamily};font-size:${gridEl.fontSizePx}px;color:${gridEl.color};" dir="ltr"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></div>`;
   } else if (gridEl.visible) {
     gridInline = `<div data-canvas-element="grid" style="${cssBox(gridEl)}min-height:8px;"></div>`;
   }
@@ -281,13 +282,12 @@ export function buildPdfHtml({
       labels.pdfFooter ||
       "",
   );
-  const footerBorder =
-    footerEl.borderWidthPx > 0
-      ? `${footerEl.borderWidthPx}px solid #1e3a5f`
-      : "none";
-  const footerInline = footerEl.visible
-    ? `<div data-canvas-element="footer" style="${cssBox(footerEl)}margin-top:14px;border-top:${footerBorder};text-align:center;">${footerText}</div>`
-    : "";
+  // The footer is always separated from the content by a line divider.
+  const footerDividerPx = Math.max(1, footerEl.borderWidthPx || 0);
+  const footerInline =
+    includeFooter && footerEl.visible
+      ? `<div data-canvas-element="footer" style="${cssBox(footerEl)}margin-top:14px;border-top:${footerDividerPx}px solid #1e3a5f;text-align:center;">${footerText}</div>`
+      : "";
 
   const rootFont = elementStyle(prefs, "text");
   return {
@@ -363,6 +363,9 @@ export async function exportResultPdf({
     companyLogoDataUrl,
     design: prefs,
     footerSampleText: footerLabel,
+    // The exported PDF draws its own per-page footer; baking the inline one
+    // into the captured image would render a second footer on the last page.
+    includeFooter: false,
   });
 
   const orientation =
@@ -429,11 +432,11 @@ export async function exportResultPdf({
         const footerStyle = elementStyle(prefs, "footer");
         const barY = A4_H - FOOTER_H;
         const textY = barY + 6.5;
-        if (footerStyle.borderWidthPx > 0) {
-          pdf.setDrawColor(30, 58, 95);
-          pdf.setLineWidth(Math.min(0.8, footerStyle.borderWidthPx * 0.25));
-          pdf.line(MARGIN, barY, A4_W - MARGIN, barY);
-        }
+        pdf.setDrawColor(30, 58, 95);
+        pdf.setLineWidth(
+          Math.min(0.8, Math.max(0.3, (footerStyle.borderWidthPx || 0) * 0.25)),
+        );
+        pdf.line(MARGIN, barY, A4_W - MARGIN, barY);
         pdf.setTextColor(17, 17, 17);
         pdf.setFontSize(footerStyle.fontSizePx || 9);
         pdf.text(exportedAt, MARGIN, textY, { align: "left" });

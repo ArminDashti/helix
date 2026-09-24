@@ -2050,3 +2050,40 @@ class LogsCollectionTests(SimpleTestCase):
                 stored = logs_store.get_log(item["id"])
                 self.assertEqual(stored["report_type"], "low")
                 self.assertEqual(stored["chart_type"], "line")
+
+
+class DbExplorerObjectKindTests(SimpleTestCase):
+    def _get(self, query: str = ""):
+        from django.test import RequestFactory
+
+        from . import views
+
+        request = RequestFactory().get(f"/api/db-explorer/tables/{query}")
+        return views.db_explorer_tables(request)
+
+    def test_defaults_to_tables(self):
+        with patch(
+            "api.db_sql.list_objects",
+            return_value=[
+                {"schema": "dbo", "name": "T", "full_name": "dbo.T", "kind": "table"}
+            ],
+        ) as mocked:
+            response = self._get()
+        self.assertEqual(response.status_code, 200)
+        mocked.assert_called_once_with("tables")
+        data = json.loads(response.content)
+        self.assertEqual(data["kind"], "tables")
+        self.assertEqual(len(data["tables"]), 1)
+
+    def test_kind_is_passed_through(self):
+        with patch("api.db_sql.list_objects", return_value=[]) as mocked:
+            response = self._get("?kind=procedures")
+        self.assertEqual(response.status_code, 200)
+        mocked.assert_called_once_with("procedures")
+        self.assertEqual(json.loads(response.content)["kind"], "procedures")
+
+    def test_unknown_kind_is_rejected(self):
+        response = self._get("?kind=triggers")
+        self.assertEqual(response.status_code, 400)
+        data = json.loads(response.content)
+        self.assertIn("kind must be one of", data["error"])

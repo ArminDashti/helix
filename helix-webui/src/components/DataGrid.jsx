@@ -5,21 +5,18 @@ export default function DataGrid({
   rows,
   emptyLabel,
   onRowClick,
-  dir,
 }) {
   const { t } = useI18n();
   const emptyText = emptyLabel ?? t("common.none");
-  const ordered =
-    dir === "rtl" ? [...columns].reverse() : columns;
   return (
     <div
+      dir="ltr"
       className="min-h-0 flex-1 overflow-auto rounded-2xl border border-line/80 bg-paper/80"
-      dir={dir || undefined}
     >
       <table className="min-w-full text-start font-sans text-sm">
         <thead className="sticky top-0 bg-fog/80 text-xs uppercase tracking-wide text-muted backdrop-blur">
           <tr>
-            {ordered.map((col) => (
+            {columns.map((col) => (
               <th key={col.key} className="whitespace-nowrap px-3 py-2 font-sans font-semibold">
                 {col.label}
               </th>
@@ -31,7 +28,7 @@ export default function DataGrid({
             <tr>
               <td
                 className="px-3 py-4 font-sans text-sm text-muted"
-                colSpan={ordered.length}
+                colSpan={columns.length}
               >
                 {emptyText}
               </td>
@@ -46,7 +43,7 @@ export default function DataGrid({
                 ].join(" ")}
                 onClick={onRowClick ? () => onRowClick(row.item) : undefined}
               >
-                {ordered.map((col) => (
+                {columns.map((col) => (
                   <td key={col.key} className="px-3 py-2 align-top font-sans">
                     {col.render(row.item)}
                   </td>

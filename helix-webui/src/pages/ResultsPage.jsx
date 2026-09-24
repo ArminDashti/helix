@@ -22,14 +22,14 @@ import PageHeader from "../components/PageHeader.jsx";
 import { useI18n } from "../context/I18nContext.jsx";
 import { useLiveSync } from "../context/LiveSyncContext.jsx";
 import { failMessage } from "../i18n/apiErrors.js";
-import { formatDateTime, formatDurationSeconds } from "../i18n/format.js";
+import { formatDateTime, formatDurationSeconds, formatNumber } from "../i18n/format.js";
 import { assetUrl } from "../utils/assetUrl.js";
 import {
   exportResultPdf,
   resolveDir,
   resultChartEntries,
 } from "../lib/exportResultPdf.js";
-import { loadPdfDesign, orderedGridColumns } from "../lib/pdfDesign.js";
+import { loadPdfDesign } from "../lib/pdfDesign.js";
 
 const DARK_CHART_DEFAULTS = {
   backgroundColor: "transparent",
@@ -60,6 +60,13 @@ function normalizeMode(mode) {
   if (mode === "analysis" || mode === "research") return "analytical_report";
   if (mode === "both") return "analytical_report_chart";
   return mode || "auto";
+}
+
+function formatTokenTotal(tokenUsage, t, locale) {
+  if (!tokenUsage) return t("common.noneDash");
+  const total = Number(tokenUsage.total_tokens) || 0;
+  const formatted = formatNumber(total, locale) || t("common.noneDash");
+  return tokenUsage.estimated ? `≈ ${formatted}` : formatted;
 }
 
 function ResultsList() {
@@ -189,6 +196,18 @@ function ResultsList() {
         render: (item) => (
           <span className="whitespace-nowrap font-sans text-[13px]">
             {formatDurationSeconds(item.duration_s) || t("common.noneDash")}
+          </span>
+        ),
+      },
+      {
+        key: "tokens",
+        label: t("results.colTokens"),
+        render: (item) => (
+          <span
+            className="whitespace-nowrap font-sans text-[13px]"
+            title={item.token_usage?.estimated ? t("results.tokensEstimated") : undefined}
+          >
+            {formatTokenTotal(item.token_usage, t, locale)}
           </span>
         ),
       },
@@ -330,12 +349,10 @@ function ResultDetail({ resultId }) {
   const reportDir = resolveDir(language, editedReport || result?.text_report);
   const reportLang = reportDir === "rtl" ? "fa" : "en";
   const gridColumns = useMemo(
-    () =>
-      showGrid
-        ? orderedGridColumns(result.grid.columns, language === "fa" ? "fa" : "en")
-        : [],
-    [showGrid, result, language],
+    () => (showGrid ? result.grid.columns : []),
+    [showGrid, result],
   );
+  const tokenUsage = record?.token_usage || null;
 
   if (loading) {
     return <p className="text-sm text-muted">{t("results.loadingDetail")}</p>;
@@ -441,6 +458,39 @@ function ResultDetail({ resultId }) {
       </PageHeader>
 
       <section className="space-y-3" aria-live="polite">
+        {tokenUsage ? (
+          <div
+            dir="ltr"
+            className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl border border-line/80 bg-paper/80 px-4 py-2 text-[13px] text-muted"
+          >
+            <span className="text-xs font-semibold uppercase tracking-wide">
+              {t("results.tokenUsage")}
+            </span>
+            <span>
+              {t("results.tokensTotal")}:{" "}
+              <strong className="font-semibold text-ink">
+                {formatNumber(tokenUsage.total_tokens, locale) || "0"}
+              </strong>
+              {tokenUsage.estimated ? " ≈" : ""}
+            </span>
+            <span>
+              {t("results.tokensPrompt")}: {formatNumber(tokenUsage.prompt_tokens, locale)}
+            </span>
+            <span>
+              {t("results.tokensCompletion")}:{" "}
+              {formatNumber(tokenUsage.completion_tokens, locale)}
+            </span>
+            <span>
+              {t("results.tokensCalls")}: {formatNumber(tokenUsage.calls, locale)}
+            </span>
+            {tokenUsage.estimated ? (
+              <span className="rounded-md border border-line bg-fog/60 px-2 py-0.5 text-[11px] uppercase tracking-wide">
+                {t("results.tokensEstimated")}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         {showChart
           ? chartEntries.map((entry, index) => (
               <div
@@ -495,7 +545,7 @@ function ResultDetail({ resultId }) {
         {showGrid ? (
           <div
             className="overflow-x-auto rounded-2xl border border-line bg-paper/80 p-3 sm:p-4"
-            dir={language === "fa" ? "rtl" : "ltr"}
+            dir="ltr"
             lang={language === "fa" ? "fa" : "en"}
           >
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">

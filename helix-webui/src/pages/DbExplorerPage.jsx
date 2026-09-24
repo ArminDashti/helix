@@ -14,8 +14,16 @@ import { preferIdOrderColumn } from "../utils/preferIdOrderColumn.js";
 
 const LIMITS = [16, 32, 64, 128];
 
+const OBJECT_KINDS = [
+  { value: "tables", labelKey: "dbExplorer.kindTables" },
+  { value: "views", labelKey: "dbExplorer.kindViews" },
+  { value: "procedures", labelKey: "dbExplorer.kindProcedures" },
+  { value: "functions", labelKey: "dbExplorer.kindFunctions" },
+];
+
 export default function DbExplorerPage() {
   const { t, locale } = useI18n();
+  const [objectKind, setObjectKind] = useState("tables");
   const [tables, setTables] = useState([]);
   const [table, setTable] = useState("");
   const [columns, setColumns] = useState([]);
@@ -30,22 +38,38 @@ export default function DbExplorerPage() {
   const [error, setError] = useState(null);
   const [tableFilter, setTableFilter] = useState("");
 
+  const kindLabel = t(
+    OBJECT_KINDS.find((k) => k.value === objectKind)?.labelKey ||
+      "dbExplorer.kindTables",
+  );
+  const canQuery = objectKind === "tables" || objectKind === "views";
+
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      setLoading(true);
       try {
-        const data = await fetchDbExplorerTables();
+        const data = await fetchDbExplorerTables(objectKind);
+        if (cancelled) return;
         const list = [...(data.tables || [])].sort((a, b) =>
           compareAz(a.full_name, b.full_name, locale),
         );
         setTables(list);
-        if (list[0]?.full_name) setTable(list[0].full_name);
+        setTable(list[0]?.full_name || "");
+        setResult(null);
+        setError(null);
       } catch (err) {
-        setError(failMessage(err, t, "dbExplorer.loadTablesFailed"));
+        if (!cancelled) {
+          setError(failMessage(err, t, "dbExplorer.loadObjectsFailed"));
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [locale, t]);
+    return () => {
+      cancelled = true;
+    };
+  }, [objectKind, locale, t]);
 
   useEffect(() => {
     if (!table) {
@@ -132,6 +156,21 @@ export default function DbExplorerPage() {
       >
         <div className="flex flex-wrap items-end gap-3 overflow-x-auto">
           <label className="block min-w-[8rem] shrink-0 text-sm">
+            <span className="font-medium text-ink">{t("dbExplorer.objectType")}</span>
+            <select
+              value={objectKind}
+              onChange={(e) => setObjectKind(e.target.value)}
+              className="mt-1 h-10 w-full min-w-[9rem] rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
+            >
+              {OBJECT_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>
+                  {t(k.labelKey)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="block min-w-[8rem] shrink-0 text-sm">
             <span className="font-medium text-ink">{t("dbExplorer.filter")}</span>
             <input
               type="search"
@@ -143,14 +182,14 @@ export default function DbExplorerPage() {
           </label>
 
           <div className="block min-w-[10rem] shrink-0 text-sm">
-            <span className="font-medium text-ink">{t("dbExplorer.table")}</span>
+            <span className="font-medium text-ink">{kindLabel}</span>
             <select
               value={table}
               onChange={(e) => setTable(e.target.value)}
               className="mt-1 h-10 w-full min-w-[10rem] rounded-xl border border-line bg-fog/40 px-3 text-sm outline-none focus:border-moss"
             >
               {tables.length === 0 ? (
-                <option value="">{t("dbExplorer.noTables")}</option>
+                <option value="">{t("dbExplorer.noObjects")}</option>
               ) : filteredTables.length === 0 ? (
                 <option value={table || ""}>
                   {table
@@ -263,7 +302,7 @@ export default function DbExplorerPage() {
           <IconButton
             type="submit"
             icon={Play}
-            disabled={!table || running}
+            disabled={!table || running || !canQuery}
             className="h-10 shrink-0 rounded-xl bg-moss px-5 text-sm font-semibold text-white hover:bg-moss-deep disabled:opacity-50"
           >
             {running ? t("dbExplorer.running") : t("dbExplorer.run")}
@@ -290,7 +329,7 @@ export default function DbExplorerPage() {
               {result.sql}
             </code>
           </div>
-          <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line">
+          <div dir="ltr" className="min-h-0 flex-1 overflow-auto rounded-xl border border-line">
             <table className="min-w-full text-start font-sans text-sm">
               <thead className="sticky top-0 bg-fog/80 text-xs uppercase tracking-wide text-muted backdrop-blur">
                 <tr>

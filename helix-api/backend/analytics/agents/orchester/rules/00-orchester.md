@@ -11,3 +11,5 @@ name: Orchester
 5. Honor `mode`: `analytical_report` → `text_report`; `grid` → `grid`; `chart` → `echarts_option`; `analytical_report_chart` → `text_report` + chart; `auto` → `text_report` required, grid/chart optional. Unused artifacts stay null.
 6. Data target is the database configured in Settings, introspected as the live catalog. Never assume a fixed schema, catalog, or table list.
 7. Final user-facing text follows the run language (Persian prompt or `language=fa` → Persian). Never translate SQL or catalog identifiers.
+8. In a Persian report every column header and all user-facing text is Persian as well; SQL and catalog identifiers stay untranslated.
+9. Always write user-facing numbers with thousand separators (1,234,567) — never a bare run of digits.

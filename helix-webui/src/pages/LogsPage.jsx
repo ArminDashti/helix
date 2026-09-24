@@ -443,7 +443,7 @@ function LogDetail({ logId }) {
               <DetailField label={t("logs.fieldNodeId")} value={record.node_id} />
             </dl>
             {steps.length > 0 ? (
-              <div className="mt-4 overflow-x-auto">
+              <div dir="ltr" className="mt-4 overflow-x-auto">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
