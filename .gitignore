@@ -17,3 +17,8 @@ helix-webui/node_modules/lucide-react/dist/cjs/lucide-react.js.map
 # commit-push-to-github: large files (>5MB) auto-ignored
 .token-optimizer/
 # auto-managed: files > 5MB
+
+# auto-managed large-file section (>5MB)
+# (paths appended by commit-push-to-github)
+
+helix-webui/UsersarminAppDataLocalhermescachescratchdocs_tables.json
