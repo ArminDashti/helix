@@ -1,5 +1,8 @@
 *.exe
 
+# Local agent session data (may contain prompts or credentials)
+.armin/
+
 # Auto-managed large files (>5MB)
 helix-api/backend/.venv/Lib/site-packages/psycopg_binary.libs/libcrypto-3-x64-c53435a8880f98b135600f385ff4a29c.dll
 helix-webui/node_modules/.vite/deps/echarts-for-react.js.map
@@ -22,3 +25,7 @@ helix-webui/node_modules/lucide-react/dist/cjs/lucide-react.js.map
 # (paths appended by commit-push-to-github)
 
 helix-webui/UsersarminAppDataLocalhermescachescratchdocs_tables.json
+
+# Auto-managed: files larger than 5 MB
+.codegraph/codegraph.db
+.gitnexus/lbug

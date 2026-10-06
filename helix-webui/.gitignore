@@ -1,4 +1,4 @@
-﻿*.exe
+*.exe
 *.EXE
 *.exe
 *.EXE
@@ -21,6 +21,8 @@ Thumbs.db
 
 # Logs
 *.log
+.armin/logs/
+.armin/functional-test/
 
 # auto-managed large files (>5MB)
 node_modules/.vite/deps/echarts-for-react.js.map

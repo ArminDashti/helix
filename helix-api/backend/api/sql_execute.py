@@ -88,7 +88,7 @@ def extract_sql(text: str) -> str:
     return raw.rstrip(";").strip()
 
 
-def _rewrite_saleslt_to_pakhsh(statement: str) -> str:
+def _rewrite_saleslt_demo_to_live(statement: str) -> str:
     if "saleslt" not in statement.lower():
         return statement
     rewritten = statement
@@ -98,8 +98,8 @@ def _rewrite_saleslt_to_pakhsh(statement: str) -> str:
         rewritten = pattern.sub(target, rewritten)
     # #region agent log
     _dbg(
-        "sql_execute.py:_rewrite_saleslt_to_pakhsh",
-        "rewrote SalesLT identifiers to Pakhsh",
+        "sql_execute.py:_rewrite_saleslt_demo_to_live",
+        "rewrote SalesLT demo identifiers to live schema",
         {
             "before": statement[:500],
             "after": rewritten[:500],
