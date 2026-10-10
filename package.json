@@ -1,0 +1,45 @@
+﻿{
+    "name":  "@armindashti/helix",
+    "version":  "1.0.0",
+    "description":  "Helix â€” LLM warehouse analytics (API + Web UI) via Docker",
+    "license":  "MIT",
+    "author":  "Armin Dashti",
+    "type":  "module",
+    "bin":  {
+                "helix":  "bin/helix.js"
+            },
+    "files":  [
+                  "bin",
+                  "lib",
+                  "docker",
+                  "helix-api",
+                  "helix-webui",
+                  "!**/.cursor",
+                  "!**/.armin",
+                  "!helix-api/exprience",
+                  "!helix-api/backend/data/*.download",
+                  "!helix-webui/public/logo-candidates",
+                  "!helix-webui/Users*"
+              ],
+    "engines":  {
+                    "node":  "\u003e=18"
+                },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/ArminDashti/helix.git"
+                   },
+    "publishConfig":  {
+                          "access":  "public"
+                      },
+    "scripts":  {
+                    "prepack":  "node scripts/verify-npx-pack.mjs"
+                },
+    "keywords":  [
+                     "helix",
+                     "llm",
+                     "analytics",
+                     "docker",
+                     "warehouse",
+                     "django"
+                 ]
+}
